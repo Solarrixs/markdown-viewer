@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeFilePath, sectionItems, reminderPickerOpen, showToc, tick } from './stores';
+  import { activeFilePath, sectionItems, reminderPickerOpen, showToc, tick, renameTrigger } from './stores';
   import { togglePin, openInFinder, openInTerminal, copyPath } from './actions';
   import { timeAgo, timeUntil } from './utils';
 
@@ -13,6 +13,10 @@
         📌
         <span class="btn-label">{currentItem?.pinned ? 'Unpin' : 'Pin'}</span>
         <kbd>P</kbd>
+      </button>
+      <button class="tool-btn" on:click={() => renameTrigger.update(n => n + 1)} title="Rename File">
+        ✏️ <span class="btn-label">Rename</span>
+        <kbd>R</kbd>
       </button>
       <button class="tool-btn" on:click={() => reminderPickerOpen.set(true)} title="Set Reminder">
         ⏰ <span class="btn-label">Remind</span>

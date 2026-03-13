@@ -26,7 +26,7 @@
     <FindBar containerEl={markdownEl} />
   {/if}
   <div class="content" class:split={$splitPath}>
-    <div class="pane left" class:active-pane={!$splitPath || $activeSplit === 'left'} on:click={() => activeSplit.set('left')} on:keydown={() => {}} role="region" tabindex="-1">
+    <div class="pane left" class:active-pane={!$splitPath || $activeSplit === 'left'} class:toc-visible={$showToc && $activeFilePath && !$editMode && !$showDiff} on:click={() => activeSplit.set('left')} on:keydown={() => {}} role="region" tabindex="-1">
       {#if !$activeFilePath}
         <div class="welcome">
           <h2>MarkInbox</h2>
@@ -96,6 +96,9 @@
   .pane.active-pane {
     border-top-color: var(--accent);
   }
+  .pane.toc-visible {
+    padding-right: 200px;
+  }
   .split-divider {
     width: 1px;
     background: var(--border);
@@ -137,6 +140,9 @@
     height: 100%;
     overflow-y: auto;
     position: relative;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px;
   }
   .welcome {
     display: flex;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { fade, scale } from 'svelte/transition';
   import { get } from 'svelte/store';
-  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc, sectionItems, selectedIndex } from './stores';
+  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc, sectionItems, selectedIndex, bulkOpenModalOpen, renameTrigger } from './stores';
   import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile, openFileDialog, openFilePath, openInFinder, openInTerminal, copyPath, reopenLastClosedTab, openInSplit, closeSplit, saveIfDirty } from './actions';
   import { invoke } from '@tauri-apps/api/core';
 
@@ -24,6 +24,8 @@
 
   const actions: PaletteItem[] = [
     { label: 'Open File...', hint: 'Cmd+O', type: 'action', action: () => { close(); openFileDialog(); } },
+    { label: 'Open Multiple Files...', hint: '', type: 'action', action: () => { close(); bulkOpenModalOpen.set(true); } },
+    { label: 'Rename file', hint: 'R', type: 'action', action: () => { close(); renameTrigger.update(n => n + 1); } },
     { label: 'Archive file', hint: 'E', type: 'action', action: () => { archiveFile(); close(); } },
     { label: 'Pin / Unpin file', hint: 'P', type: 'action', action: () => { togglePin(); close(); } },
     { label: 'Set reminder', hint: 'H', type: 'action', action: () => { close(); reminderPickerOpen.set(true); } },

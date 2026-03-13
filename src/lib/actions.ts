@@ -123,17 +123,71 @@ export async function openFile(item: OpenFileParams, index?: number) {
 
 export async function openFileDialog() {
   const selected = await open({
-    multiple: false,
+    multiple: true,
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
   });
   if (typeof selected === 'string') {
     await openFilePath(selected);
+  } else if (Array.isArray(selected) && selected.length > 0) {
+    await openMultipleFilePaths(selected);
   }
 }
 
 export async function openFilePath(path: string) {
   const result = await invoke<OpenFileParams>('ensure_file_tracked', { path });
   await openFile(result);
+}
+
+export async function openMultipleFilePaths(paths: string[]) {
+  if (paths.length === 0) return;
+  if (paths.length === 1) {
+    await openFilePath(paths[0]);
+    return;
+  }
+  try {
+    const results = await invoke<OpenFileParams[]>('ensure_files_tracked', { paths });
+    if (results.length === 0) return;
+    // Add all as tabs without loading content, then open the last one fully
+    for (let i = 0; i < results.length - 1; i++) {
+      const item = results[i];
+      const tabs = [...get(openTabs)];
+      if (!tabs.some(t => t.path === item.path)) {
+        tabs.push({ path: item.path, filename: item.filename, additions: 0, deletions: 0 });
+        openTabs.set(tabs);
+      }
+      invoke('mark_as_read', { path: item.path }).catch(() => {});
+    }
+    // Only load content for the last file
+    await openFile(results[results.length - 1]);
+    await refreshItems();
+    const skipped = paths.length - results.length;
+    const msg = skipped > 0
+      ? `Opened ${results.length} files (${skipped} skipped)`
+      : `Opened ${results.length} files`;
+    showToast(msg);
+  } catch (e) {
+    showToast(`Failed to open files: ${e}`);
+  }
+}
+
+export async function renameFile(oldPath: string, newName: string): Promise<OpenFileParams | null> {
+  try {
+    const result = await invoke<OpenFileParams>('rename_file', { old_path: oldPath, new_name: newName });
+    // Update the tab entry
+    openTabs.update(tabs => tabs.map(t =>
+      t.path === oldPath ? { ...t, path: result.path, filename: result.filename } : t
+    ));
+    // Update active file path if it was the renamed file
+    if (get(activeFilePath) === oldPath) {
+      activeFilePath.set(result.path);
+    }
+    await refreshItems();
+    showToast(`Renamed to ${result.filename}`);
+    return result;
+  } catch (e) {
+    showToast(`Rename failed: ${e}`);
+    return null;
+  }
 }
 
 export async function archiveFile() {

@@ -1,10 +1,64 @@
 <script lang="ts">
-  import { openTabs, activeTabIndex } from './stores';
-  import { switchTab as doSwitchTab, closeTabByIndex } from './actions';
+  import { openTabs, activeTabIndex, renameTrigger } from './stores';
+  import { switchTab as doSwitchTab, closeTabByIndex, renameFile } from './actions';
+
+  let editingIndex: number | null = null;
+  let editValue = '';
+  let inputEl: HTMLInputElement;
+  let renameCommitting = false;
+  let lastSeenTrigger = 0;
+
+  // React to rename trigger from keyboard shortcut / command palette
+  // Track last-seen value to avoid re-firing on tab switch or mount
+  $: if ($renameTrigger > lastSeenTrigger) {
+    lastSeenTrigger = $renameTrigger;
+    startRename($activeTabIndex);
+  }
 
   function closeTab(index: number, e: MouseEvent) {
     e.stopPropagation();
     closeTabByIndex(index);
+  }
+
+  function startRename(index: number) {
+    const tab = $openTabs[index];
+    if (!tab) return;
+    editingIndex = index;
+    editValue = tab.filename;
+    // Wait for Svelte to render the input, then focus+select
+    setTimeout(() => {
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.select();
+      }
+    }, 0);
+  }
+
+  async function commitRename() {
+    if (renameCommitting || editingIndex === null) return;
+    renameCommitting = true;
+    const idx = editingIndex;
+    const tab = $openTabs[idx];
+    const newName = editValue.trim();
+    editingIndex = null;
+    if (tab && newName && newName !== tab.filename) {
+      await renameFile(tab.path, newName);
+    }
+    renameCommitting = false;
+  }
+
+  function cancelRename() {
+    editingIndex = null;
+  }
+
+  function handleRenameKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
   }
 </script>
 
@@ -14,12 +68,25 @@
       <div
         class="tab"
         class:active={$activeTabIndex === i}
-        on:click={() => { if (i !== $activeTabIndex) doSwitchTab(i); }}
+        on:click={() => { if (editingIndex === null && i !== $activeTabIndex) doSwitchTab(i); }}
+        on:dblclick|stopPropagation={() => startRename(i)}
         on:keydown={(e) => { if (e.key === 'Enter' && i !== $activeTabIndex) doSwitchTab(i); }}
         role="tab"
         tabindex="0"
       >
-        <span class="tab-name">{tab.filename}</span>
+        {#if editingIndex === i}
+          <input
+            bind:this={inputEl}
+            bind:value={editValue}
+            on:blur={commitRename}
+            on:keydown={handleRenameKeydown}
+            on:click|stopPropagation
+            class="rename-input"
+            spellcheck="false"
+          />
+        {:else}
+          <span class="tab-name">{tab.filename}</span>
+        {/if}
         {#if tab.additions > 0 || tab.deletions > 0}
           <span class="tab-diff">
             <span class="add">+{tab.additions}</span>
@@ -73,4 +140,15 @@
     line-height: 1;
   }
   .close:hover { color: var(--text-primary); }
+  .rename-input {
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 1px 4px;
+    outline: none;
+    width: 120px;
+  }
 </style>

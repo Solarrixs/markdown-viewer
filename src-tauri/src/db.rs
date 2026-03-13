@@ -314,6 +314,15 @@ impl Database {
         Ok(())
     }
 
+    pub fn rename_file_path(&self, old_path: &str, new_path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE files SET path = ?2 WHERE path = ?1",
+            params![old_path, new_path],
+        )?;
+        Ok(())
+    }
+
     pub fn search_files(&self, query: &str) -> Result<Vec<FileRecord>> {
         let conn = self.conn.lock().unwrap();
         let pattern = format!("%{}%", query);

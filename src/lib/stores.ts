@@ -88,6 +88,12 @@ export const fileDiff = writable<DiffResult | null>(null);
 // Settings modal open
 export const settingsOpen = writable<boolean>(false);
 
+// Bulk open modal
+export const bulkOpenModalOpen = writable<boolean>(false);
+
+// Rename trigger — incremented to signal TabBar to start rename on active tab
+export const renameTrigger = writable<number>(0);
+
 // Always on top state
 export const alwaysOnTop = writable<boolean>(false);
 

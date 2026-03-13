@@ -202,6 +202,8 @@ pub fn run() {
             commands::add_ignore_pattern,
             commands::remove_ignore_pattern,
             commands::ensure_file_tracked,
+            commands::ensure_files_tracked,
+            commands::rename_file,
             commands::open_in_finder,
             commands::open_in_terminal,
             commands::restore_file,

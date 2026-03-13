@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, afterUpdate } from 'svelte';
+  import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { fileContent } from './stores';
 
   export let containerEl: HTMLDivElement;
@@ -16,19 +16,16 @@
   let activeId: string = '';
   let observer: IntersectionObserver | null = null;
   let lastHeadingCount = -1;
-  let lastContentRef = '';
+  let tocEl: HTMLElement;
 
   function extractHeadings() {
     if (!containerEl) return;
 
-    // Dirty check: skip if content hasn't changed (unless entries are empty)
-    const content = $fileContent;
-    if (content === lastContentRef && entries.length > 0) return;
-    lastContentRef = content;
-
     const headings = containerEl.querySelectorAll('h1, h2, h3, h4');
-    if (headings.length === lastHeadingCount) {
-      // Check if text actually changed
+    if (headings.length === 0) return;
+
+    // Dirty check: skip if nothing changed
+    if (headings.length === lastHeadingCount && entries.length > 0) {
       let same = true;
       headings.forEach((el, i) => {
         if (entries[i]?.text !== (el.textContent || '')) same = false;
@@ -37,8 +34,7 @@
     }
     lastHeadingCount = headings.length;
 
-    // Assign IDs to headings that don't have them yet (in case our
-    // afterUpdate runs before RenderedMarkdown's heading ID assignment)
+    // Assign IDs to headings that don't have them yet
     headings.forEach((el, i) => {
       if (!el.id) el.id = `heading-${i}`;
     });
@@ -92,7 +88,34 @@
     if (entry) entry.el.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
   }
 
-  afterUpdate(extractHeadings);
+  // Re-extract when file content changes (triggers component update via subscription)
+  $: if ($fileContent) {
+    lastHeadingCount = -1;
+  }
+
+  afterUpdate(() => {
+    if (entries.length === 0) {
+      // DOM may not be ready yet for large documents — retry after layout
+      requestAnimationFrame(() => requestAnimationFrame(extractHeadings));
+    } else {
+      extractHeadings();
+    }
+  });
+
+  // Also try on mount with a delay for large initial renders
+  onMount(() => {
+    requestAnimationFrame(() => requestAnimationFrame(extractHeadings));
+  });
+
+  // Scroll the active TOC entry into view within the TOC panel
+  $: if (activeId && tocEl) {
+    tick().then(() => {
+      const activeBtn = tocEl?.querySelector('.toc-entry.active');
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  }
 
   onDestroy(() => {
     if (observer) observer.disconnect();
@@ -100,7 +123,7 @@
 </script>
 
 {#if entries.length > 0}
-<nav class="toc">
+<nav class="toc" bind:this={tocEl}>
   {#each entries as entry}
     <button
       class="toc-entry"
@@ -120,11 +143,10 @@
     right: 16px;
     top: 50%;
     transform: translateY(-50%);
-    width: 180px;
+    max-width: 180px;
     max-height: 60vh;
     overflow-y: auto;
-    opacity: 0.2;
-    transition: opacity 0.2s ease;
+    background: transparent;
     pointer-events: auto;
     display: flex;
     flex-direction: column;
@@ -139,16 +161,21 @@
     display: none;
   }
   .toc:hover {
-    opacity: 1;
     background: var(--bg-elevated);
+  }
+  .toc:hover .toc-entry {
+    color: var(--text-secondary);
+  }
+  .toc:hover .toc-entry.active {
+    color: var(--accent);
   }
   .toc-entry {
     display: block;
     width: 100%;
     text-align: left;
-    background: none;
+    background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.15);
     font-size: 11px;
     line-height: 1.4;
     cursor: pointer;
@@ -157,12 +184,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: color 0.2s ease;
+    flex-shrink: 0;
+    min-height: 20px;
   }
   .toc-entry:hover {
     color: var(--text-primary);
     background: rgba(255, 255, 255, 0.05);
   }
   .toc-entry.active {
-    color: var(--accent);
+    color: rgba(91, 155, 213, 0.4);
   }
 </style>

@@ -24,6 +24,7 @@
     { keys: 'E', label: 'Archive file', category: 'Actions' },
     { keys: 'P', label: 'Pin / Unpin file', category: 'Actions' },
     { keys: 'H', label: 'Set reminder', category: 'Actions' },
+    { keys: 'R', label: 'Rename file', category: 'Actions' },
     { keys: 'Z', label: 'Undo last action', category: 'Actions' },
     // View
     { keys: '\u2318+E', label: 'Toggle edit mode', category: 'View' },

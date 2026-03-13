@@ -8,6 +8,7 @@
   import ReminderPicker from './lib/ReminderPicker.svelte';
   import SettingsModal from './lib/SettingsModal.svelte';
   import ShortcutHelp from './lib/ShortcutHelp.svelte';
+  import BulkOpenModal from './lib/BulkOpenModal.svelte';
   import Toast from './lib/Toast.svelte';
   import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog } from './lib/actions';
   import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight } from './lib/stores';
@@ -64,6 +65,7 @@
   <ReminderPicker />
   <SettingsModal />
   <ShortcutHelp />
+  <BulkOpenModal />
   <Toast />
 </KeyboardHandler>
 

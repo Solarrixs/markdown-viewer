@@ -4,6 +4,7 @@
     editMode, showDiff, showToc, commandPaletteOpen, reminderPickerOpen,
     sidebarVisible, selectedIndex, sectionItems, activeFilePath,
     openTabs, activeTabIndex, settingsOpen, shortcutHelpOpen, toasts, findBarOpen,
+    renameTrigger,
   } from './stores';
   import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty, openFileDialog, openInFinder, openInTerminal, copyPath, reopenLastClosedTab, dismissToast, openInSplit } from './actions';
 
@@ -139,6 +140,10 @@
       case 'c':
         e.preventDefault();
         copyPath();
+        break;
+      case 'r':
+        e.preventDefault();
+        if ($activeFilePath) renameTrigger.update(n => n + 1);
         break;
       case 'o':
         e.preventDefault();

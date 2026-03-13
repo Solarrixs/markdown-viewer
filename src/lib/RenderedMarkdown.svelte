@@ -159,9 +159,7 @@
 
 <style>
   .markdown-body {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 32px 24px;
+    padding: 32px 0;
     color: var(--text-primary);
     font-size: 15px;
     line-height: 1.7;

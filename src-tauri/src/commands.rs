@@ -211,31 +211,85 @@ pub fn search_file_contents(
 
 // -- Open arbitrary file --
 
-#[tauri::command]
-pub fn ensure_file_tracked(
-    db: State<'_, Arc<Database>>,
-    path: &str,
-) -> Result<FileInfo, String> {
+/// Validate a path is a readable markdown file, track it in the DB, and return FileInfo.
+fn validate_and_track(db: &Database, path: &str) -> Result<FileInfo, String> {
     let meta = std::fs::metadata(path).map_err(|_| format!("File not found: {}", path))?;
     if !meta.is_file() {
-        return Err("Path is not a file".to_string());
+        return Err(format!("Not a file: {}", path));
     }
-
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
     if !crate::watcher::MARKDOWN_EXTENSIONS.contains(&ext) {
-        return Err("Only markdown files (.md, .markdown, .txt) can be opened".to_string());
+        return Err(format!("Only markdown files (.md, .markdown, .txt) can be opened: {}", path));
     }
-
     let mtime = crate::watcher::get_file_mtime_string(path);
     db.upsert_file_if_missing(path, &mtime)
         .map_err(|e| e.to_string())?;
-
     Ok(FileInfo {
         filename: git::extract_filename(path),
         path: path.to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn ensure_file_tracked(
+    db: State<'_, Arc<Database>>,
+    path: &str,
+) -> Result<FileInfo, String> {
+    validate_and_track(&db, path)
+}
+
+#[tauri::command]
+pub fn ensure_files_tracked(
+    db: State<'_, Arc<Database>>,
+    paths: Vec<String>,
+) -> Result<Vec<FileInfo>, String> {
+    let mut results = Vec::new();
+    let mut errors = Vec::new();
+
+    for path in &paths {
+        match validate_and_track(&db, path) {
+            Ok(info) => results.push(info),
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if results.is_empty() && !errors.is_empty() {
+        return Err(errors.join("\n"));
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn rename_file(
+    db: State<'_, Arc<Database>>,
+    old_path: &str,
+    new_name: &str,
+) -> Result<FileInfo, String> {
+    let old = std::path::Path::new(old_path);
+    if !old.exists() {
+        return Err(format!("File not found: {}", old_path));
+    }
+    let new_path = old.parent()
+        .ok_or("No parent directory")?
+        .join(new_name);
+    if new_path.exists() {
+        return Err(format!("File already exists: {}", new_path.display()));
+    }
+    // Validate extension
+    let ext = new_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !crate::watcher::MARKDOWN_EXTENSIONS.contains(&ext) {
+        return Err("Filename must end with .md, .markdown, or .txt".to_string());
+    }
+    std::fs::rename(old_path, &new_path).map_err(|e| e.to_string())?;
+    let new_path_str = new_path.to_string_lossy().to_string();
+    db.rename_file_path(old_path, &new_path_str).map_err(|e| e.to_string())?;
+    Ok(FileInfo {
+        filename: git::extract_filename(&new_path_str),
+        path: new_path_str,
     })
 }
 
