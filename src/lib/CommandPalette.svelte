@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { commandPaletteOpen, inboxItems, activeFilePath, settingsOpen } from './stores';
-  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile } from './actions';
+  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc } from './stores';
+  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile, openFileDialog, openFilePath, openInFinder, openInTerminal, copyPath, reopenLastClosedTab } from './actions';
   import { invoke } from '@tauri-apps/api/core';
 
   let query = '';
@@ -11,21 +11,32 @@
   interface PaletteItem {
     label: string;
     hint: string;
-    type: 'action' | 'file';
+    type: 'action' | 'file' | 'path';
     action: () => void;
   }
 
+  interface PaletteSection {
+    label: string;
+    items: PaletteItem[];
+  }
+
   const actions: PaletteItem[] = [
+    { label: 'Open File...', hint: 'Cmd+O', type: 'action', action: () => { close(); openFileDialog(); } },
     { label: 'Archive file', hint: 'E', type: 'action', action: () => { archiveFile(); close(); } },
     { label: 'Pin / Unpin file', hint: 'P', type: 'action', action: () => { togglePin(); close(); } },
-    { label: 'Set reminder', hint: 'H', type: 'action', action: () => {} },
-    { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => {} },
+    { label: 'Set reminder', hint: 'H', type: 'action', action: () => { close(); reminderPickerOpen.set(true); } },
+    { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => { editMode.update(v => !v); close(); } },
+    { label: 'Reveal in Finder', hint: 'F', type: 'action', action: () => { openInFinder(); close(); } },
+    { label: 'Open in Terminal', hint: 'T', type: 'action', action: () => { openInTerminal(); close(); } },
+    { label: 'Copy file path', hint: 'C', type: 'action', action: () => { copyPath(); close(); } },
     { label: 'Toggle always on top', hint: '', type: 'action', action: () => { toggleAlwaysOnTop(); close(); } },
+    { label: 'Toggle table of contents', hint: 'O', type: 'action', action: () => { showToc.update(v => !v); close(); } },
     { label: 'Go to Inbox', hint: 'G I', type: 'action', action: () => { switchSection('inbox'); close(); } },
     { label: 'Go to Pinned', hint: 'G P', type: 'action', action: () => { switchSection('pinned'); close(); } },
     { label: 'Go to Reminders', hint: 'G R', type: 'action', action: () => { switchSection('reminders'); close(); } },
     { label: 'Go to Archive', hint: 'G A', type: 'action', action: () => { switchSection('archive'); close(); } },
     { label: 'Open Settings', hint: 'Cmd+,', type: 'action', action: () => { settingsOpen.set(true); close(); } },
+    { label: 'Reopen last closed tab', hint: 'Cmd+Shift+T', type: 'action', action: () => { close(); reopenLastClosedTab(); } },
   ];
 
   let fileResults: PaletteItem[] = [];
@@ -43,14 +54,34 @@
 
   $: {
     clearTimeout(searchDebounceTimer);
-    if (query.length >= 2) {
+    if (isPathQuery) {
+      fileResults = [];
+    } else if (query.length >= 2) {
       searchDebounceTimer = setTimeout(() => searchFiles(query), 150);
     } else {
       fileResults = [];
     }
   }
 
-  $: allResults = [...filteredActions, ...fileResults];
+  $: isPathQuery = query.startsWith('/') || query.startsWith('~');
+
+  $: sections = ((): PaletteSection[] => {
+    const result: PaletteSection[] = [];
+    if (isPathQuery) {
+      result.push({ label: 'Open Path', items: [{
+        label: `Open ${query}`, hint: '', type: 'path',
+        action: () => { close(); openFilePath(query); },
+      }] });
+    } else if (filteredActions.length > 0) {
+      result.push({ label: 'Actions', items: filteredActions });
+    }
+    if (fileResults.length > 0) {
+      result.push({ label: 'Files', items: fileResults });
+    }
+    return result;
+  })();
+
+  $: allResults = sections.flatMap(s => s.items);
   $: if (selectedResultIndex >= allResults.length) {
     selectedResultIndex = Math.max(0, allResults.length - 1);
   }
@@ -103,28 +134,14 @@
         bind:this={inputEl}
         bind:value={query}
         on:keydown={handleKeydown}
-        placeholder="Type a command or search files..."
+        placeholder="Type a command, search files, or paste a path..."
         class="search-input"
       />
       <div class="results">
-        {#if filteredActions.length > 0}
-          <div class="section-label">Actions</div>
-          {#each filteredActions as item, i}
-            <button
-              class="result"
-              class:selected={selectedResultIndex === i}
-              on:click={() => item.action()}
-              on:mouseenter={() => selectedResultIndex = i}
-            >
-              <span class="result-label">{item.label}</span>
-              <span class="result-hint">{item.hint}</span>
-            </button>
-          {/each}
-        {/if}
-        {#if fileResults.length > 0}
-          <div class="section-label">Files</div>
-          {#each fileResults as item, i}
-            {@const idx = filteredActions.length + i}
+        {#each sections as section, si}
+          <div class="section-label">{section.label}</div>
+          {#each section.items as item, i}
+            {@const idx = sections.slice(0, si).reduce((sum, s) => sum + s.items.length, 0) + i}
             <button
               class="result"
               class:selected={selectedResultIndex === idx}
@@ -132,10 +149,10 @@
               on:mouseenter={() => selectedResultIndex = idx}
             >
               <span class="result-label">{item.label}</span>
-              <span class="result-hint file-hint">{item.hint}</span>
+              <span class="result-hint" class:file-hint={item.type === 'file'}>{item.hint}</span>
             </button>
           {/each}
-        {/if}
+        {/each}
         {#if allResults.length === 0}
           <div class="no-results">No results</div>
         {/if}

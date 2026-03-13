@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { activeFilePath, inboxItems, reminderPickerOpen } from './stores';
-  import { togglePin, openInFinder, openInVSCode, openInTerminal, copyPath } from './actions';
-  import { timeAgo } from './utils';
+  import { activeFilePath, sectionItems, reminderPickerOpen, showToc, tick } from './stores';
+  import { togglePin, openInFinder, openInTerminal, copyPath } from './actions';
+  import { timeAgo, timeUntil } from './utils';
 
-  $: currentItem = $inboxItems.find(i => i.path === $activeFilePath);
+  $: currentItem = $sectionItems.find(i => i.path === $activeFilePath);
 </script>
 
 {#if $activeFilePath}
@@ -12,27 +12,37 @@
       <button class="tool-btn" class:active={currentItem?.pinned} on:click={togglePin} title={currentItem?.pinned ? 'Unpin' : 'Pin'}>
         📌
         <span class="btn-label">{currentItem?.pinned ? 'Unpin' : 'Pin'}</span>
+        <kbd>P</kbd>
       </button>
       <button class="tool-btn" on:click={() => reminderPickerOpen.set(true)} title="Set Reminder">
         ⏰ <span class="btn-label">Remind</span>
+        <kbd>H</kbd>
       </button>
       <span class="separator"></span>
       <button class="tool-btn" on:click={openInFinder} title="Reveal in Finder">
         📁 <span class="btn-label">Finder</span>
+        <kbd>F</kbd>
       </button>
-      <button class="tool-btn" on:click={openInVSCode} title="Open in VS Code">
-        ⌨ <span class="btn-label">VS Code</span>
-      </button>
-      <button class="tool-btn" on:click={openInTerminal} title="Open in Terminal">
+      <button class="tool-btn" on:click={openInTerminal} title="Open in Ghostty">
         ▶ <span class="btn-label">Terminal</span>
+        <kbd>T</kbd>
       </button>
       <button class="tool-btn" on:click={copyPath} title="Copy File Path">
         📋 <span class="btn-label">Copy Path</span>
+        <kbd>C</kbd>
+      </button>
+      <span class="separator"></span>
+      <button class="tool-btn" class:active={$showToc} on:click={() => showToc.update(v => !v)} title="Table of Contents">
+        ☰ <span class="btn-label">TOC</span>
+        <kbd>O</kbd>
       </button>
     </div>
     <div class="toolbar-right">
+      {#if currentItem?.reminder_time}
+        <span class="reminder-badge">⏰ {void $tick, timeUntil(currentItem.reminder_time)}</span>
+      {/if}
       {#if currentItem?.last_modified}
-        <span class="last-edited">Edited {timeAgo(currentItem.last_modified, true)}</span>
+        <span class="last-edited">Edited {void $tick, timeAgo(currentItem.last_modified, true)}</span>
       {/if}
     </div>
   </div>
@@ -81,11 +91,26 @@
   .btn-label {
     font-size: 10px;
   }
+  .tool-btn :global(kbd) {
+    font-size: 9px;
+    font-family: monospace;
+    color: #666;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 2px;
+    padding: 0 3px;
+    margin-left: 2px;
+  }
   .separator {
     width: 1px;
     height: 16px;
     background: #444;
     margin: 0 4px;
+  }
+  .reminder-badge {
+    font-size: 10px;
+    color: #5b9bd5;
+    margin-right: 12px;
   }
   .last-edited {
     font-size: 10px;

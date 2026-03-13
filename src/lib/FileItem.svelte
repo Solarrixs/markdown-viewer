@@ -1,9 +1,19 @@
 <script lang="ts">
   import type { InboxItem } from './stores';
+  import { tick } from './stores';
   import { timeAgo } from './utils';
+
+  import { createEventDispatcher } from 'svelte';
 
   export let item: InboxItem;
   export let selected: boolean = false;
+
+  const dispatch = createEventDispatcher<{ dismiss: void }>();
+
+  function handleDismiss(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch('dismiss');
+  }
 </script>
 
 <div class="file-item" class:selected class:unread={item.status === 'unread'}>
@@ -26,7 +36,8 @@
         <span class="del">-{item.deletions}</span>
       </span>
     {/if}
-    <span class="time">{timeAgo(item.last_modified)}</span>
+    <span class="time">{void $tick, timeAgo(item.last_modified)}</span>
+    <button class="dismiss" on:click={handleDismiss} title="Archive">&times;</button>
   </div>
 </div>
 
@@ -79,4 +90,17 @@
   .add { color: #4ec9b0; }
   .del { color: #d16969; }
   .time { color: #999; font-size: 11px; }
+  .dismiss {
+    display: none;
+    background: transparent;
+    border: none;
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .dismiss:hover { color: #e0e0e0; }
+  .file-item:hover .dismiss { display: block; }
 </style>

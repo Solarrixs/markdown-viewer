@@ -1,16 +1,16 @@
 <script lang="ts">
   import {
-    editMode, showDiff, commandPaletteOpen, reminderPickerOpen,
-    sidebarVisible, selectedIndex, inboxItems, activeFilePath,
+    editMode, showDiff, showToc, commandPaletteOpen, reminderPickerOpen,
+    sidebarVisible, selectedIndex, sectionItems, activeFilePath,
     openTabs, activeTabIndex, settingsOpen,
   } from './stores';
-  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty } from './actions';
+  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty, openFileDialog, openInFinder, openInTerminal, copyPath, reopenLastClosedTab } from './actions';
 
   let pendingChord = false;
   let chordTimeout: ReturnType<typeof setTimeout>;
 
   async function openSelected() {
-    const item = $inboxItems[$selectedIndex];
+    const item = $sectionItems[$selectedIndex];
     if (!item) return;
     await openFile(item);
   }
@@ -18,6 +18,11 @@
   function handleKeydown(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey;
 
+    if (meta && e.key === 'o') {
+      e.preventDefault();
+      openFileDialog();
+      return;
+    }
     if (meta && e.key === 'k') {
       e.preventDefault();
       commandPaletteOpen.set(true);
@@ -32,9 +37,10 @@
       e.preventDefault();
       if ($activeFilePath) {
         if ($editMode) {
-          saveIfDirty();
+          saveIfDirty().then(() => editMode.set(false));
+        } else {
+          editMode.set(true);
         }
-        editMode.update(v => !v);
       }
       return;
     }
@@ -46,6 +52,11 @@
     if (meta && e.key === '\\') {
       e.preventDefault();
       sidebarVisible.update(v => !v);
+      return;
+    }
+    if (meta && e.shiftKey && e.key === 't') {
+      e.preventDefault();
+      reopenLastClosedTab();
       return;
     }
     if (meta && e.key === 'w') {
@@ -80,7 +91,7 @@
     switch (e.key.toLowerCase()) {
       case 'j':
         e.preventDefault();
-        selectedIndex.update(i => Math.min(i + 1, $inboxItems.length - 1));
+        selectedIndex.update(i => Math.min(i + 1, $sectionItems.length - 1));
         break;
       case 'k':
         e.preventDefault();
@@ -101,6 +112,22 @@
       case 'h':
         e.preventDefault();
         if ($activeFilePath) reminderPickerOpen.set(true);
+        break;
+      case 'f':
+        e.preventDefault();
+        openInFinder();
+        break;
+      case 't':
+        e.preventDefault();
+        openInTerminal();
+        break;
+      case 'c':
+        e.preventDefault();
+        copyPath();
+        break;
+      case 'o':
+        e.preventDefault();
+        if ($activeFilePath && !$editMode && !$showDiff) showToc.update(v => !v);
         break;
       case 'g':
         pendingChord = true;

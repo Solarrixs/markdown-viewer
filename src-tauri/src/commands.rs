@@ -3,10 +3,10 @@ use crate::git;
 use crate::watcher::WatcherHandle;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 #[derive(Debug, Serialize)]
-pub struct InboxItem {
+pub struct FileListItem {
     pub path: String,
     pub filename: String,
     pub status: String,
@@ -18,7 +18,7 @@ pub struct InboxItem {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SearchResult {
+pub struct FileInfo {
     pub path: String,
     pub filename: String,
 }
@@ -27,10 +27,15 @@ pub struct SearchResult {
 pub fn get_inbox_items(
     db: State<'_, Arc<Database>>,
     filter: &str,
-) -> Result<Vec<InboxItem>, String> {
-    let records = db.get_files_by_status(filter).map_err(|e| e.to_string())?;
+) -> Result<Vec<FileListItem>, String> {
+    let records: Vec<_> = db.get_files_by_status(filter)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        // TODO: Replace per-record Path::exists() with soft-delete via watcher events (WARN-8)
+        .filter(|r| std::path::Path::new(&r.path).exists())
+        .collect();
 
-    // Batch diff: one repo open + one diff for all files
+    // Batch diff: one repo open + one diff for existing files only
     let paths: Vec<String> = records.iter().map(|r| r.path.clone()).collect();
     let diff_stats = git::get_batch_diff_stats(&paths);
 
@@ -41,7 +46,7 @@ pub fn get_inbox_items(
                 .get(&record.path)
                 .cloned()
                 .unwrap_or_default();
-            InboxItem {
+            FileListItem {
                 filename: git::extract_filename(&record.path),
                 path: record.path,
                 status: record.status,
@@ -67,7 +72,7 @@ pub fn get_file_diff(path: &str) -> Result<git::DiffResult, String> {
 
 #[tauri::command]
 pub fn mark_as_read(db: State<'_, Arc<Database>>, path: &str) -> Result<(), String> {
-    db.mark_status(path, "read").map_err(|e| e.to_string())
+    db.mark_as_read(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -76,8 +81,8 @@ pub fn mark_as_archived(db: State<'_, Arc<Database>>, path: &str) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn pin_file(db: State<'_, Arc<Database>>, path: &str, pinned: bool) -> Result<(), String> {
-    db.set_pinned(path, pinned).map_err(|e| e.to_string())
+pub fn toggle_pin(db: State<'_, Arc<Database>>, path: &str) -> Result<bool, String> {
+    db.toggle_pinned(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -123,11 +128,11 @@ pub fn remove_watched_folder(
 pub fn search_files(
     db: State<'_, Arc<Database>>,
     query: &str,
-) -> Result<Vec<SearchResult>, String> {
+) -> Result<Vec<FileInfo>, String> {
     let records = db.search_files(query).map_err(|e| e.to_string())?;
     Ok(records
         .into_iter()
-        .map(|r| SearchResult {
+        .map(|r| FileInfo {
             filename: git::extract_filename(&r.path),
             path: r.path,
         })
@@ -144,6 +149,19 @@ pub fn toggle_always_on_top(app: tauri::AppHandle) -> Result<bool, String> {
     window
         .set_always_on_top(new_state)
         .map_err(|e| e.to_string())?;
+
+    // Sync the menu checkbox with the new state
+    if let Some(menu) = app.menu() {
+        if let Some(item) = menu.get("always_on_top") {
+            if let Some(check_item) = item.as_check_menuitem() {
+                let _ = check_item.set_checked(new_state);
+            }
+        }
+    }
+
+    // Emit event so frontend store stays in sync
+    let _ = app.emit("always-on-top-changed", new_state);
+
     Ok(new_state)
 }
 
@@ -178,26 +196,42 @@ pub fn remove_ignore_pattern(
     Ok(())
 }
 
-// -- External app commands --
+// -- Open arbitrary file --
 
 #[tauri::command]
-pub fn get_file_mtime(path: &str) -> Result<String, String> {
-    Ok(crate::watcher::get_file_mtime_string(path))
+pub fn ensure_file_tracked(
+    db: State<'_, Arc<Database>>,
+    path: &str,
+) -> Result<FileInfo, String> {
+    let meta = std::fs::metadata(path).map_err(|_| format!("File not found: {}", path))?;
+    if !meta.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if !crate::watcher::MARKDOWN_EXTENSIONS.contains(&ext) {
+        return Err("Only markdown files (.md, .markdown, .txt) can be opened".to_string());
+    }
+
+    let mtime = crate::watcher::get_file_mtime_string(path);
+    db.upsert_file_if_missing(path, &mtime)
+        .map_err(|e| e.to_string())?;
+
+    Ok(FileInfo {
+        filename: git::extract_filename(path),
+        path: path.to_string(),
+    })
 }
+
+// -- External app commands --
 
 #[tauri::command]
 pub fn open_in_finder(path: &str) -> Result<(), String> {
     std::process::Command::new("open")
         .arg("-R")
-        .arg(path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn open_in_vscode(path: &str) -> Result<(), String> {
-    std::process::Command::new("code")
         .arg(path)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -211,7 +245,7 @@ pub fn open_in_terminal(path: &str) -> Result<(), String> {
         .ok_or("No parent directory")?;
     std::process::Command::new("open")
         .arg("-a")
-        .arg("Terminal")
+        .arg("Ghostty")
         .arg(parent)
         .spawn()
         .map_err(|e| e.to_string())?;

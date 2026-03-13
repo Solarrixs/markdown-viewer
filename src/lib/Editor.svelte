@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { activeFilePath, editText, fileContent, savedIndicator } from './stores';
+  import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
+  import { activeFilePath, editText, fileContent, savedIndicator, scrollRatio } from './stores';
   import { saveContent } from './actions';
 
   let loadedPath = '';
@@ -36,11 +38,43 @@
     }
   }
 
+  let focusPath: string | null = null;
+
+  function handleFocus() {
+    focusPath = $activeFilePath;
+  }
+
   function handleBlur() {
+    if ($activeFilePath !== focusPath) return;
     if ($editText !== $fileContent) {
       save();
     }
   }
+
+  onMount(() => {
+    if (textarea) {
+      requestAnimationFrame(() => {
+        const ratio = get(scrollRatio);
+        textarea.scrollTop = ratio * (textarea.scrollHeight - textarea.clientHeight);
+        // Place cursor at the approximate line
+        const lines = $editText.split('\n');
+        const totalLines = lines.length;
+        const targetLine = Math.round(ratio * totalLines);
+        let charPos = 0;
+        for (let i = 0; i < targetLine && i < lines.length; i++) {
+          charPos += lines[i].length + 1;
+        }
+        textarea.selectionStart = textarea.selectionEnd = charPos;
+        textarea.focus();
+      });
+    }
+  });
+
+  onDestroy(() => {
+    if (textarea && textarea.scrollHeight > textarea.clientHeight) {
+      scrollRatio.set(textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight));
+    }
+  });
 </script>
 
 <div class="editor-container">
@@ -58,6 +92,7 @@
     bind:this={textarea}
     bind:value={$editText}
     on:keydown={handleKeydown}
+    on:focus={handleFocus}
     on:blur={handleBlur}
     spellcheck="false"
     class="editor-textarea"

@@ -2,6 +2,18 @@ use git2::{DiffOptions, Repository};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::Instant;
+
+/// TTL cache for batch diff stats to avoid recomputing on every refresh.
+static DIFF_CACHE: Mutex<Option<DiffCache>> = Mutex::new(None);
+
+struct DiffCache {
+    stats: HashMap<String, DiffStats>,
+    created_at: Instant,
+}
+
+const DIFF_CACHE_TTL_SECS: u64 = 5;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DiffHunk {
@@ -34,60 +46,98 @@ pub fn extract_filename(path: &str) -> String {
         .to_string()
 }
 
-/// Batch diff stats for multiple files in a single repo open + diff operation.
+/// Batch diff stats for multiple files, grouped by repo.
+/// Results are cached with a 5-second TTL to avoid recomputing on every refresh.
 pub fn get_batch_diff_stats(file_paths: &[String]) -> HashMap<String, DiffStats> {
-    let mut result = HashMap::new();
     if file_paths.is_empty() {
-        return result;
+        return HashMap::new();
     }
 
-    // Try to discover repo from the first file
-    let first_path = Path::new(&file_paths[0]);
-    let repo = match Repository::discover(first_path) {
-        Ok(r) => r,
-        Err(_) => return result,
-    };
-    let workdir = match repo.workdir() {
-        Some(w) => w.to_path_buf(),
-        None => return result,
-    };
+    // Check TTL cache
+    {
+        let cache = DIFF_CACHE.lock().unwrap();
+        if let Some(ref c) = *cache {
+            if c.created_at.elapsed().as_secs() < DIFF_CACHE_TTL_SECS {
+                return c.stats.clone();
+            }
+        }
+    }
 
-    let head = match repo.head().and_then(|h| h.peel_to_commit()) {
-        Ok(c) => c,
-        Err(_) => return result,
-    };
-    let head_tree = match head.tree() {
-        Ok(t) => t,
-        Err(_) => return result,
-    };
+    let result = compute_batch_diff_stats(file_paths);
 
-    // One diff for the whole repo (no pathspec filter)
-    let diff = match repo.diff_tree_to_workdir_with_index(Some(&head_tree), None) {
-        Ok(d) => d,
-        Err(_) => return result,
-    };
+    // Update cache
+    {
+        let mut cache = DIFF_CACHE.lock().unwrap();
+        *cache = Some(DiffCache {
+            stats: result.clone(),
+            created_at: Instant::now(),
+        });
+    }
 
-    // Build a set of paths we care about for quick lookup
-    let path_set: std::collections::HashSet<String> = file_paths.iter().cloned().collect();
+    result
+}
 
-    for i in 0..diff.deltas().len() {
-        if let Some(delta) = diff.get_delta(i) {
-            let rel_path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path());
-            if let Some(rel) = rel_path {
-                let abs_path = workdir.join(rel).to_string_lossy().to_string();
-                if path_set.contains(&abs_path) {
-                    let mut stats = DiffStats::default();
-                    if let Ok(patch) = git2::Patch::from_diff(&diff, i) {
-                        if let Some(patch) = patch {
-                            let (_, adds, dels) = patch.line_stats().unwrap_or((0, 0, 0));
-                            stats.additions = adds as i32;
-                            stats.deletions = dels as i32;
+/// Compute diff stats by grouping files by their git repo, then running
+/// one diff per repo.
+fn compute_batch_diff_stats(file_paths: &[String]) -> HashMap<String, DiffStats> {
+    let mut result = HashMap::new();
+
+    // Group file paths by their repo workdir
+    let mut repos: HashMap<String, Vec<String>> = HashMap::new();
+    for fp in file_paths {
+        let p = Path::new(fp);
+        if let Ok(repo) = Repository::discover(p) {
+            if let Some(workdir) = repo.workdir() {
+                let key = workdir.to_string_lossy().to_string();
+                repos.entry(key).or_default().push(fp.clone());
+            }
+        }
+    }
+
+    // Run one diff per repo
+    for (workdir_str, paths) in &repos {
+        let workdir = Path::new(workdir_str);
+        let repo = match Repository::open(workdir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let head = match repo.head().and_then(|h| h.peel_to_commit()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let head_tree = match head.tree() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        let diff = match repo.diff_tree_to_workdir_with_index(Some(&head_tree), None) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let path_set: std::collections::HashSet<&String> = paths.iter().collect();
+        let workdir_path = workdir.to_path_buf();
+
+        for i in 0..diff.deltas().len() {
+            if let Some(delta) = diff.get_delta(i) {
+                let rel_path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path());
+                if let Some(rel) = rel_path {
+                    let abs_path = workdir_path.join(rel).to_string_lossy().to_string();
+                    if path_set.contains(&abs_path) {
+                        let mut stats = DiffStats::default();
+                        if let Ok(patch) = git2::Patch::from_diff(&diff, i) {
+                            if let Some(patch) = patch {
+                                let (_, adds, dels) = patch.line_stats().unwrap_or((0, 0, 0));
+                                stats.additions = adds as i32;
+                                stats.deletions = dels as i32;
+                            }
                         }
+                        result.insert(abs_path, stats);
                     }
-                    result.insert(abs_path, stats);
                 }
             }
         }

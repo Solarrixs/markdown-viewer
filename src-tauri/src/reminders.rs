@@ -13,9 +13,11 @@ pub fn start_reminder_loop(app_handle: AppHandle, db: Arc<Database>) {
                 for file in due_files {
                     let filename = git::extract_filename(&file.path);
 
-                    // Mark as unread and clear reminder
-                    let _ = db.mark_status(&file.path, "unread");
-                    let _ = db.set_reminder(&file.path, None);
+                    // Mark as unread and clear reminder atomically
+                    if let Err(e) = db.fire_reminder(&file.path) {
+                        eprintln!("Failed to update reminder for {}: {}", file.path, e);
+                        continue;
+                    }
 
                     // Send notification
                     #[cfg(desktop)]

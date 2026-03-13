@@ -4,7 +4,11 @@
   import RenderedMarkdown from './RenderedMarkdown.svelte';
   import DiffView from './DiffView.svelte';
   import Editor from './Editor.svelte';
-  import { activeFilePath, editMode, showDiff } from './stores';
+  import TableOfContents from './TableOfContents.svelte';
+  import { activeFilePath, editMode, showDiff, showToc } from './stores';
+
+  let markdownEl: HTMLDivElement;
+  let readerScrollEl: HTMLDivElement;
 </script>
 
 <div class="main-pane">
@@ -25,8 +29,11 @@
     {:else if $showDiff}
       <DiffView />
     {:else}
-      <div class="reader-scroll">
-        <RenderedMarkdown />
+      <div class="reader-scroll" bind:this={readerScrollEl}>
+        <RenderedMarkdown bind:containerEl={markdownEl} />
+        {#if $showToc && markdownEl}
+          <TableOfContents containerEl={markdownEl} scrollParent={readerScrollEl} />
+        {/if}
       </div>
     {/if}
   </div>
@@ -48,6 +55,7 @@
   .reader-scroll {
     height: 100%;
     overflow-y: auto;
+    position: relative;
   }
   .welcome {
     display: flex;
@@ -56,6 +64,8 @@
     justify-content: center;
     height: 100%;
     color: #555;
+    user-select: none;
+    -webkit-user-select: none;
   }
   .welcome h2 { color: #444; font-size: 24px; font-weight: 300; margin-bottom: 8px; }
   .welcome p { font-size: 13px; margin-bottom: 24px; }

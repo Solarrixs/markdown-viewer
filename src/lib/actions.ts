@@ -1,9 +1,10 @@
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
-  inboxItems, currentSection, selectedIndex, activeFilePath,
+  sectionItems, currentSection, selectedIndex, activeFilePath,
   openTabs, activeTabIndex, fileContent, fileDiff, editMode, showDiff,
-  alwaysOnTop, savedIndicator, editText,
+  alwaysOnTop, savedIndicator, editText, selfSaveInFlight,
 } from './stores';
 import type { InboxItem, Section, DiffResult } from './stores';
 
@@ -17,18 +18,23 @@ export interface OpenFileParams {
 export async function refreshItems() {
   try {
     const items = await invoke<InboxItem[]>('get_inbox_items', { filter: get(currentSection) });
-    inboxItems.set(items);
+    sectionItems.set(items);
   } catch (e) {
     console.error('Failed to refresh items:', e);
   }
 }
 
+let savedIndicatorTimer: ReturnType<typeof setTimeout>;
+
 export async function saveContent(path: string, content: string) {
+  selfSaveInFlight.set(true);
   await invoke('save_file', { path, content });
   fileContent.set(content);
   savedIndicator.set(true);
-  setTimeout(() => savedIndicator.set(false), 1500);
-  // No refreshItems() here — the watcher will emit file-changed → debouncedRefresh
+  clearTimeout(savedIndicatorTimer);
+  savedIndicatorTimer = setTimeout(() => savedIndicator.set(false), 1500);
+  // Clear self-save flag after a short delay to let watcher event pass
+  setTimeout(() => selfSaveInFlight.set(false), 500);
 }
 
 export async function saveIfDirty() {
@@ -81,6 +87,21 @@ export async function openFile(item: OpenFileParams, index?: number) {
   ]);
 }
 
+export async function openFileDialog() {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+  });
+  if (typeof selected === 'string') {
+    await openFilePath(selected);
+  }
+}
+
+export async function openFilePath(path: string) {
+  const result = await invoke<OpenFileParams>('ensure_file_tracked', { path });
+  await openFile(result);
+}
+
 export async function archiveFile() {
   const path = get(activeFilePath);
   if (!path) return;
@@ -88,7 +109,7 @@ export async function archiveFile() {
   await closeTabByPath(path);
   await invoke('mark_as_archived', { path });
   await refreshItems();
-  const items = get(inboxItems);
+  const items = get(sectionItems);
   if (items.length > 0) {
     const newIdx = Math.min(get(selectedIndex), items.length - 1);
     selectedIndex.set(newIdx);
@@ -98,23 +119,22 @@ export async function archiveFile() {
   }
 }
 
+export async function archiveByPath(path: string) {
+  await closeTabByPath(path);
+  await invoke('mark_as_archived', { path });
+  await refreshItems();
+}
+
 export async function togglePin() {
   const path = get(activeFilePath);
   if (!path) return;
-  const item = get(inboxItems).find(i => i.path === path);
-  if (!item) return;
-  await invoke('pin_file', { path, pinned: !item.pinned });
+  await invoke('toggle_pin', { path });
   await refreshItems();
 }
 
 export async function openInFinder() {
   const path = get(activeFilePath);
   if (path) await invoke('open_in_finder', { path });
-}
-
-export async function openInVSCode() {
-  const path = get(activeFilePath);
-  if (path) await invoke('open_in_vscode', { path });
 }
 
 export async function openInTerminal() {
@@ -156,6 +176,8 @@ export async function loadFileContent(path: string) {
   fileDiff.set(diffResult.status === 'fulfilled' ? diffResult.value : null);
 }
 
+const recentlyClosedTabs: OpenFileParams[] = [];
+
 function clearActiveFile() {
   activeFilePath.set(null);
   activeTabIndex.set(0);
@@ -172,6 +194,10 @@ export async function closeTabByIndex(index: number) {
 
   await saveIfDirty();
 
+  const closed = tabs[index];
+  recentlyClosedTabs.push({ path: closed.path, filename: closed.filename });
+  if (recentlyClosedTabs.length > 20) recentlyClosedTabs.shift();
+
   tabs.splice(index, 1);
   openTabs.set(tabs);
 
@@ -187,6 +213,7 @@ export async function closeTabByIndex(index: number) {
 }
 
 async function closeTabByPath(path: string) {
+  await saveIfDirty();
   const idx = get(openTabs).findIndex(t => t.path === path);
   if (idx !== -1) {
     const tabs = [...get(openTabs)];
@@ -199,13 +226,25 @@ async function closeTabByPath(path: string) {
     } else if (get(activeTabIndex) > idx) {
       activeTabIndex.update(i => i - 1);
     }
-  } else {
+  } else if (get(activeFilePath) === path) {
     clearActiveFile();
   }
 }
 
 export async function closeActiveTab() {
   await closeTabByIndex(get(activeTabIndex));
+}
+
+export async function reopenLastClosedTab() {
+  const item = recentlyClosedTabs.pop();
+  if (!item) return;
+  await openFile(item);
+}
+
+export async function setReminderAndArchive(path: string, time: string) {
+  await invoke('set_reminder', { path, time });
+  await invoke('mark_as_archived', { path });
+  await refreshItems();
 }
 
 export async function switchTab(index: number) {

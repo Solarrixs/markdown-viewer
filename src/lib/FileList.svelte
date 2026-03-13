@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { inboxItems, selectedIndex } from './stores';
+  import { sectionItems, selectedIndex } from './stores';
   import type { InboxItem } from './stores';
   import FileItem from './FileItem.svelte';
-  import { openFile } from './actions';
+  import { openFile, archiveByPath } from './actions';
 
   function handleClick(item: InboxItem, index: number) {
     openFile(item, index);
@@ -10,15 +10,15 @@
 </script>
 
 <div class="file-list">
-  {#if $inboxItems.length === 0}
+  {#if $sectionItems.length === 0}
     <div class="empty">
       <span class="check">✓</span>
       <p>All caught up</p>
     </div>
   {:else}
-    {#each $inboxItems as item, i}
+    {#each $sectionItems as item, i}
       <button class="file-button" on:click={() => handleClick(item, i)}>
-        <FileItem {item} selected={$selectedIndex === i} />
+        <FileItem {item} selected={$selectedIndex === i} on:dismiss={() => archiveByPath(item.path)} />
       </button>
     {/each}
   {/if}

@@ -29,7 +29,7 @@ pub struct FileRecord {
 }
 
 pub struct Database {
-    pub conn: Mutex<Connection>,
+    pub(crate) conn: Mutex<Connection>,
 }
 
 impl Database {
@@ -181,8 +181,17 @@ impl Database {
             "INSERT INTO files (path, status, last_modified)
              VALUES (?1, 'unread', ?2)
              ON CONFLICT(path) DO UPDATE SET
-                status = 'unread',
+                status = CASE WHEN status = 'archived' THEN 'archived' ELSE 'unread' END,
                 last_modified = ?2",
+            params![path, last_modified],
+        )?;
+        Ok(())
+    }
+
+    pub fn upsert_file_if_missing(&self, path: &str, last_modified: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO files (path, status, last_modified) VALUES (?1, 'unread', ?2)",
             params![path, last_modified],
         )?;
         Ok(())
@@ -191,10 +200,10 @@ impl Database {
     pub fn get_files_by_status(&self, filter: &str) -> Result<Vec<FileRecord>> {
         let conn = self.conn.lock().unwrap();
         let (where_clause, order) = match filter {
-            "inbox" => ("WHERE status IN ('unread', 'read')", "ORDER BY last_modified DESC"),
+            "inbox" => ("WHERE status IN ('unread', 'read') AND pinned = 0 AND reminder_time IS NULL", "ORDER BY last_modified DESC"),
             "archive" => ("WHERE status = 'archived'", "ORDER BY last_modified DESC"),
-            "pinned" => ("WHERE pinned = 1", "ORDER BY last_modified DESC"),
-            "reminders" => ("WHERE reminder_time IS NOT NULL", "ORDER BY reminder_time ASC"),
+            "pinned" => ("WHERE pinned = 1 AND status != 'archived' AND reminder_time IS NULL", "ORDER BY last_modified DESC"),
+            "reminders" => ("WHERE reminder_time IS NOT NULL AND status != 'archived'", "ORDER BY reminder_time ASC"),
             _ => ("", "ORDER BY last_modified DESC"),
         };
         let sql = format!("SELECT {} FROM files {} {}", Self::FILE_COLUMNS, where_clause, order);
@@ -212,11 +221,30 @@ impl Database {
         Ok(())
     }
 
-    pub fn set_pinned(&self, path: &str, pinned: bool) -> Result<()> {
+    pub fn mark_as_read(&self, path: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE files SET pinned = ?2 WHERE path = ?1",
-            params![path, pinned],
+            "UPDATE files SET status = 'read' WHERE path = ?1 AND status = 'unread'",
+            params![path],
+        )?;
+        Ok(())
+    }
+
+    pub fn toggle_pinned(&self, path: &str) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let new_state: bool = conn.query_row(
+            "UPDATE files SET pinned = NOT pinned WHERE path = ?1 RETURNING pinned",
+            params![path],
+            |row| row.get(0),
+        )?;
+        Ok(new_state)
+    }
+
+    pub fn fire_reminder(&self, path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE files SET status = 'unread', reminder_time = NULL WHERE path = ?1",
+            params![path],
         )?;
         Ok(())
     }
@@ -234,7 +262,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let sql = format!(
-            "SELECT {} FROM files WHERE reminder_time IS NOT NULL AND reminder_time <= ?1 AND status != 'unread'",
+            "SELECT {} FROM files WHERE reminder_time IS NOT NULL AND reminder_time <= ?1 AND status != 'archived'",
             Self::FILE_COLUMNS
         );
         let mut stmt = conn.prepare_cached(&sql)?;

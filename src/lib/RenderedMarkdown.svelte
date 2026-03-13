@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { fileContent } from './stores';
+  import { onMount, onDestroy, afterUpdate } from 'svelte';
+  import { get } from 'svelte/store';
+  import { fileContent, activeFilePath, scrollRatio } from './stores';
+  import { saveContent } from './actions';
   import MarkdownIt from 'markdown-it';
+  // @ts-ignore — no types available
+  import taskLists from 'markdown-it-task-lists';
   import hljs from 'highlight.js';
 
   const md = MarkdownIt({
@@ -15,12 +20,111 @@
       }
       return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
     }
+  }).use(taskLists, { enabled: true });
+
+  // Strip HTML comments and dangerous tags (script, iframe, etc.) from rendered output
+  function sanitizeHtml(html: string): string {
+    return html
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<\s*\/?\s*(script|iframe|object|embed|form|link|meta|style)[^>]*>/gi, '');
+  }
+
+  $: rendered = sanitizeHtml(md.render($fileContent));
+
+  export let containerEl: HTMLDivElement = undefined!;
+
+  // Inject heading IDs only when rendered content changes
+  let lastRendered = '';
+  $: if (rendered !== lastRendered) {
+    lastRendered = rendered;
+    // Wait for DOM update before injecting IDs
+    requestAnimationFrame(() => {
+      if (!containerEl) return;
+      const headings = containerEl.querySelectorAll('h1, h2, h3, h4');
+      headings.forEach((el, i) => {
+        el.id = `heading-${i}`;
+      });
+    });
+  }
+
+  // Find the index of a checkbox in the markdown source, skipping matches inside code blocks
+  function findCheckboxIndices(content: string): number[] {
+    const indices: number[] = [];
+    // Match fenced code blocks and inline code to skip them
+    const codeBlockRegex = /(`{3,})[^`]*?\1|`[^`\n]+`/g;
+    const codeRanges: [number, number][] = [];
+    let codeMatch: RegExpExecArray | null;
+    while ((codeMatch = codeBlockRegex.exec(content)) !== null) {
+      codeRanges.push([codeMatch.index, codeMatch.index + codeMatch[0].length]);
+    }
+
+    const checkboxRegex = /- \[([ xX])\]/g;
+    let match: RegExpExecArray | null;
+    while ((match = checkboxRegex.exec(content)) !== null) {
+      const pos = match.index;
+      const inCode = codeRanges.some(([start, end]) => pos >= start && pos < end);
+      if (!inCode) {
+        indices.push(pos);
+      }
+    }
+    return indices;
+  }
+
+  function handleCheckboxClick(e: Event) {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'INPUT' || target.getAttribute('type') !== 'checkbox') return;
+
+    const input = target as HTMLInputElement;
+    const allCheckboxes = containerEl.querySelectorAll('input[type="checkbox"].task-list-item-checkbox');
+    const checkboxIndex = Array.from(allCheckboxes).indexOf(input);
+    if (checkboxIndex === -1) return;
+
+    const content = get(fileContent);
+    const positions = findCheckboxIndices(content);
+    if (checkboxIndex >= positions.length) return;
+
+    const pos = positions[checkboxIndex];
+    const current = content[pos + 3]; // the character inside [ ]
+    const replacement = current === ' ' ? '- [x]' : '- [ ]';
+    const newContent = content.slice(0, pos) + replacement + content.slice(pos + 5);
+
+    if (newContent !== content) {
+      fileContent.set(newContent);
+      const path = get(activeFilePath);
+      if (path) {
+        saveContent(path, newContent);
+      }
+    }
+  }
+
+  function getScrollParent(): HTMLElement | null {
+    return containerEl?.closest('.reader-scroll') as HTMLElement | null;
+  }
+
+  onMount(() => {
+    containerEl.addEventListener('click', handleCheckboxClick);
+    // Restore scroll position from before the toggle
+    const scroller = getScrollParent();
+    if (scroller) {
+      requestAnimationFrame(() => {
+        scroller.scrollTop = get(scrollRatio) * (scroller.scrollHeight - scroller.clientHeight);
+      });
+    }
   });
 
-  $: rendered = md.render($fileContent);
+  onDestroy(() => {
+    // Save scroll position before being destroyed by the toggle
+    const scroller = getScrollParent();
+    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+      scrollRatio.set(scroller.scrollTop / (scroller.scrollHeight - scroller.clientHeight));
+    }
+    if (containerEl) {
+      containerEl.removeEventListener('click', handleCheckboxClick);
+    }
+  });
 </script>
 
-<div class="markdown-body">
+<div class="markdown-body" bind:this={containerEl}>
   {@html rendered}
 </div>
 
@@ -53,4 +157,14 @@
   .markdown-body :global(hr) { border: none; border-top: 1px solid #333; margin: 24px 0; }
   .markdown-body :global(img) { max-width: 100%; border-radius: 4px; }
   .markdown-body :global(strong) { color: #fff; }
+  /* Task list checkbox styles */
+  .markdown-body :global(.task-list-item) { list-style: none; margin-left: -24px; padding-left: 0; }
+  .markdown-body :global(.task-list-item input[type="checkbox"]) {
+    margin-right: 8px;
+    width: 16px;
+    height: 16px;
+    accent-color: #5b9bd5;
+    cursor: pointer;
+    vertical-align: middle;
+  }
 </style>

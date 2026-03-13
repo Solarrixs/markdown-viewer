@@ -7,15 +7,19 @@
   import CommandPalette from './lib/CommandPalette.svelte';
   import ReminderPicker from './lib/ReminderPicker.svelte';
   import SettingsModal from './lib/SettingsModal.svelte';
-  import { refreshItems, saveIfDirty, closeActiveTab } from './lib/actions';
-  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible } from './lib/stores';
+  import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog } from './lib/actions';
+  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight } from './lib/stores';
+  import { get } from 'svelte/store';
 
   let unlisteners: Array<() => void> = [];
   let debounceTimer: ReturnType<typeof setTimeout>;
 
   function debouncedRefresh() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => refreshItems(), 300);
+    debounceTimer = setTimeout(() => {
+      // Check at execution time, not arrival time, to avoid race with the 500ms flag window
+      if (!get(selfSaveInFlight)) refreshItems();
+    }, 300);
   }
 
   onMount(async () => {
@@ -37,6 +41,7 @@
       listen('diff_view', () => showDiff.update(v => !v)),
       listen('toggle_sidebar', () => sidebarVisible.update(v => !v)),
       listen('command_palette', () => commandPaletteOpen.set(true)),
+      listen('open_file', () => openFileDialog()),
     ]);
 
     unlisteners = [unlisten1, unlisten2, ...menuListeners];

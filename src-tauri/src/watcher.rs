@@ -6,6 +6,9 @@ use tokio::sync::Notify;
 
 use crate::db::Database;
 
+/// Supported file extensions for markdown/text files.
+pub const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "txt"];
+
 struct CompiledIgnore {
     globs: Vec<glob::Pattern>,
     exact: Vec<String>,
@@ -136,7 +139,8 @@ pub fn get_file_mtime_string(path: &str) -> String {
 }
 
 fn should_process(path: &str, ignore: &CompiledIgnore) -> bool {
-    if !path.ends_with(".md") {
+    let has_valid_ext = MARKDOWN_EXTENSIONS.iter().any(|ext| path.ends_with(&format!(".{}", ext)));
+    if !has_valid_ext {
         return false;
     }
     let filename = Path::new(path)

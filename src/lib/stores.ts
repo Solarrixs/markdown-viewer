@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, readable } from 'svelte/store';
 
 export interface InboxItem {
   path: string;
@@ -50,7 +50,7 @@ export type Section = 'inbox' | 'pinned' | 'reminders' | 'archive';
 export const currentSection = writable<Section>('inbox');
 
 // All inbox items for current section
-export const inboxItems = writable<InboxItem[]>([]);
+export const sectionItems = writable<InboxItem[]>([]);
 
 // Selected item index in sidebar
 export const selectedIndex = writable<number>(0);
@@ -96,3 +96,19 @@ export const savedIndicator = writable<boolean>(false);
 
 // Editor text (promoted from Editor local state for auto-save)
 export const editText = writable<string>('');
+
+// Flag to suppress watcher-triggered reloads during self-initiated saves
+export const selfSaveInFlight = writable<boolean>(false);
+
+// Table of contents panel visible
+export const showToc = writable<boolean>(false);
+
+// Scroll position ratio (0-1) preserved across edit/view toggles
+export const scrollRatio = writable<number>(0);
+
+// Ticks every 60s to force re-evaluation of relative timestamps
+export const tick = readable(0, (set) => {
+  let count = 0;
+  const interval = setInterval(() => set(++count), 60_000);
+  return () => clearInterval(interval);
+});
