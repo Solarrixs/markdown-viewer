@@ -2,9 +2,9 @@
   import {
     editMode, showDiff, commandPaletteOpen, reminderPickerOpen,
     sidebarVisible, selectedIndex, inboxItems, activeFilePath,
-    openTabs, activeTabIndex,
+    openTabs, activeTabIndex, settingsOpen,
   } from './stores';
-  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab } from './actions';
+  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty } from './actions';
 
   let pendingChord = false;
   let chordTimeout: ReturnType<typeof setTimeout>;
@@ -23,9 +23,19 @@
       commandPaletteOpen.set(true);
       return;
     }
+    if (meta && e.key === ',') {
+      e.preventDefault();
+      settingsOpen.set(true);
+      return;
+    }
     if (meta && e.key === 'e') {
       e.preventDefault();
-      if ($activeFilePath) editMode.update(v => !v);
+      if ($activeFilePath) {
+        if ($editMode) {
+          saveIfDirty();
+        }
+        editMode.update(v => !v);
+      }
       return;
     }
     if (meta && e.key === 'd') {
@@ -53,7 +63,7 @@
       return;
     }
 
-    if ($editMode || $commandPaletteOpen || $reminderPickerOpen) return;
+    if ($editMode || $commandPaletteOpen || $reminderPickerOpen || $settingsOpen) return;
 
     if (pendingChord) {
       pendingChord = false;
@@ -62,6 +72,7 @@
         case 'i': switchSection('inbox'); break;
         case 'p': switchSection('pinned'); break;
         case 'r': switchSection('reminders'); break;
+        case 'a': switchSection('archive'); break;
       }
       return;
     }
@@ -83,7 +94,7 @@
         e.preventDefault();
         archiveFile();
         break;
-      case 's':
+      case 'p':
         e.preventDefault();
         togglePin();
         break;

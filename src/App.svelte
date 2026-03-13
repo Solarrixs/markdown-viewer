@@ -6,7 +6,9 @@
   import MainPane from './lib/MainPane.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
   import ReminderPicker from './lib/ReminderPicker.svelte';
-  import { refreshItems } from './lib/actions';
+  import SettingsModal from './lib/SettingsModal.svelte';
+  import { refreshItems, saveIfDirty, closeActiveTab } from './lib/actions';
+  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible } from './lib/stores';
 
   let unlisteners: Array<() => void> = [];
   let debounceTimer: ReturnType<typeof setTimeout>;
@@ -21,10 +23,27 @@
 
     const unlisten1 = await listen('file-changed', debouncedRefresh);
     const unlisten2 = await listen('reminder-fired', () => refreshItems());
-    unlisteners = [unlisten1, unlisten2];
+
+    // Menu bar event handlers
+    const menuListeners = await Promise.all([
+      listen('settings', () => settingsOpen.set(true)),
+      listen('save', () => saveIfDirty()),
+      listen('close_tab', () => closeActiveTab()),
+      listen('edit_mode', async () => {
+        await saveIfDirty();
+        editMode.update(v => !v);
+        showDiff.set(false);
+      }),
+      listen('diff_view', () => showDiff.update(v => !v)),
+      listen('toggle_sidebar', () => sidebarVisible.update(v => !v)),
+      listen('command_palette', () => commandPaletteOpen.set(true)),
+    ]);
+
+    unlisteners = [unlisten1, unlisten2, ...menuListeners];
   });
 
   onDestroy(() => {
+    clearTimeout(debounceTimer);
     unlisteners.forEach(fn => fn());
   });
 </script>
@@ -36,6 +55,7 @@
   </div>
   <CommandPalette />
   <ReminderPicker />
+  <SettingsModal />
 </KeyboardHandler>
 
 <style>
@@ -47,7 +67,7 @@
   :global(body) {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #1e1e1e;
-    color: #d4d4d4;
+    color: #eee;
     overflow: hidden;
   }
   .app {

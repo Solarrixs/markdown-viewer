@@ -2,6 +2,7 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Notify;
 
 use crate::db::Database;
 
@@ -36,59 +37,102 @@ impl CompiledIgnore {
     }
 }
 
-pub fn start_watcher(app_handle: AppHandle, db: Arc<Database>) {
+pub struct WatcherHandle {
+    restart_signal: Arc<Notify>,
+}
+
+impl WatcherHandle {
+    pub fn restart(&self) {
+        self.restart_signal.notify_one();
+    }
+}
+
+pub fn start_watcher(app_handle: AppHandle, db: Arc<Database>) -> WatcherHandle {
+    let restart_signal = Arc::new(Notify::new());
+    let signal_clone = restart_signal.clone();
+
     std::thread::spawn(move || {
-        let folders = db.get_watched_folders().unwrap_or_default();
-        let raw_patterns = db.get_ignore_patterns().unwrap_or_default();
-        let ignore = CompiledIgnore::from_patterns(&raw_patterns);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime for watcher");
 
-        let db_clone = db.clone();
-        let app_clone = app_handle.clone();
+        rt.block_on(async move {
+            loop {
+                let folders = db.get_watched_folders().unwrap_or_default();
+                let raw_patterns: Vec<String> = db.get_ignore_patterns_with_ids()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| p.pattern)
+                    .collect();
+                let ignore = CompiledIgnore::from_patterns(&raw_patterns);
 
-        let mut _watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    match event.kind {
-                        EventKind::Create(_) | EventKind::Modify(_) => {
-                            for path in &event.paths {
-                                if let Some(path_str) = path.to_str() {
-                                    if should_process(path_str, &ignore) {
-                                        let modified = chrono::Utc::now()
-                                            .format("%Y-%m-%dT%H:%M:%S")
-                                            .to_string();
-                                        if let Err(e) =
-                                            db_clone.upsert_file(path_str, &modified)
-                                        {
-                                            eprintln!("DB upsert error: {}", e);
+                let db_clone = db.clone();
+                let app_clone = app_handle.clone();
+
+                let watcher_result = RecommendedWatcher::new(
+                    move |res: Result<Event, notify::Error>| {
+                        if let Ok(event) = res {
+                            match event.kind {
+                                EventKind::Create(_) | EventKind::Modify(_) => {
+                                    for path in &event.paths {
+                                        if let Some(path_str) = path.to_str() {
+                                            if should_process(path_str, &ignore) {
+                                                let modified = get_file_mtime_string(path_str);
+                                                if let Err(e) =
+                                                    db_clone.upsert_file(path_str, &modified)
+                                                {
+                                                    eprintln!("DB upsert error: {}", e);
+                                                }
+                                                let _ = app_clone.emit("file-changed", path_str);
+                                            }
                                         }
-                                        let _ = app_clone.emit("file-changed", path_str);
                                     }
+                                }
+                                _ => {}
+                            }
+                        }
+                    },
+                    Config::default(),
+                );
+
+                match watcher_result {
+                    Ok(mut watcher) => {
+                        for folder in &folders {
+                            let path = Path::new(&folder.path);
+                            if path.exists() {
+                                if let Err(e) = watcher.watch(path, RecursiveMode::Recursive) {
+                                    eprintln!("Failed to watch {}: {}", folder.path, e);
                                 }
                             }
                         }
-                        _ => {}
+
+                        // Wait for restart signal
+                        signal_clone.notified().await;
+                        // Watcher is dropped here, then loop restarts with fresh config
+                        drop(watcher);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create file watcher: {}", e);
+                        // Wait before retrying
+                        signal_clone.notified().await;
                     }
                 }
-            },
-            Config::default(),
-        )
-        .expect("Failed to create file watcher");
-
-        for folder in &folders {
-            let path = Path::new(&folder.path);
-            if path.exists() {
-                if let Err(e) = _watcher.watch(path, RecursiveMode::Recursive) {
-                    eprintln!("Failed to watch {}: {}", folder.path, e);
-                }
             }
-        }
-
-        // Park the thread forever — watcher is event-driven internally.
-        // _watcher must stay alive (not dropped) so we hold it via the binding above.
-        loop {
-            std::thread::park();
-        }
+        });
     });
+
+    WatcherHandle { restart_signal }
+}
+
+pub fn get_file_mtime_string(path: &str) -> String {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map(|t| {
+            let datetime: chrono::DateTime<chrono::Utc> = t.into();
+            datetime.to_rfc3339()
+        })
+        .unwrap_or_else(|_| chrono::Utc::now().to_rfc3339())
 }
 
 fn should_process(path: &str, ignore: &CompiledIgnore) -> bool {

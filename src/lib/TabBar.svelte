@@ -1,23 +1,10 @@
 <script lang="ts">
-  import { openTabs, activeTabIndex, activeFilePath, fileContent, fileDiff } from './stores';
-  import { switchTab as doSwitchTab } from './actions';
+  import { openTabs, activeTabIndex } from './stores';
+  import { switchTab as doSwitchTab, closeTabByIndex } from './actions';
 
   function closeTab(index: number, e: MouseEvent) {
     e.stopPropagation();
-    const tabs = [...$openTabs];
-    tabs.splice(index, 1);
-    openTabs.set(tabs);
-
-    if (tabs.length === 0) {
-      activeFilePath.set(null);
-      activeTabIndex.set(0);
-      fileContent.set('');
-      fileDiff.set(null);
-    } else if ($activeTabIndex >= tabs.length) {
-      doSwitchTab(tabs.length - 1);
-    } else if ($activeTabIndex === index) {
-      doSwitchTab(Math.min(index, tabs.length - 1));
-    }
+    closeTabByIndex(index);
   }
 </script>
 
@@ -27,8 +14,8 @@
       <div
         class="tab"
         class:active={$activeTabIndex === i}
-        on:click={() => doSwitchTab(i)}
-        on:keydown={(e) => { if (e.key === 'Enter') doSwitchTab(i); }}
+        on:click={() => { if (i !== $activeTabIndex) doSwitchTab(i); }}
+        on:keydown={(e) => { if (e.key === 'Enter' && i !== $activeTabIndex) doSwitchTab(i); }}
         role="tab"
         tabindex="0"
       >
@@ -49,7 +36,7 @@
   .tab-bar {
     display: flex;
     background: #1a1a1a;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid #333;
     overflow-x: auto;
     flex-shrink: 0;
   }
@@ -60,16 +47,16 @@
     padding: 6px 12px;
     background: transparent;
     border: none;
-    border-right: 1px solid #2a2a2a;
-    color: #888;
+    border-right: 1px solid #333;
+    color: #bbb;
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.1s;
   }
-  .tab:hover { color: #ccc; }
+  .tab:hover { color: #e0e0e0; }
   .tab.active {
-    color: #e0e0e0;
+    color: #fff;
     background: #1e1e1e;
     border-bottom: 2px solid #5b9bd5;
   }
@@ -79,7 +66,7 @@
   .close {
     background: transparent;
     border: none;
-    color: #555;
+    color: #999;
     font-size: 14px;
     cursor: pointer;
     padding: 0 2px;

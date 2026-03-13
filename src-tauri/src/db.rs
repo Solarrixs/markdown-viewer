@@ -11,6 +11,12 @@ pub struct WatchedFolder {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IgnorePattern {
+    pub id: i64,
+    pub pattern: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileRecord {
     pub id: i64,
     pub path: String,
@@ -77,6 +83,7 @@ impl Database {
         let defaults = vec![
             "_CONTEXT.md",
             "_INDEX.md",
+            "*INDEX*",
             ".obsidian/*",
             "*.csv",
             "*.json",
@@ -105,7 +112,7 @@ impl Database {
 
     pub fn get_watched_folders(&self) -> Result<Vec<WatchedFolder>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, path, active FROM watched_folders WHERE active = 1")?;
+        let mut stmt = conn.prepare_cached("SELECT id, path, active FROM watched_folders WHERE active = 1")?;
         let rows = stmt.query_map([], |row| {
             Ok(WatchedFolder {
                 id: row.get(0)?,
@@ -116,13 +123,39 @@ impl Database {
         rows.collect()
     }
 
+    pub fn remove_watched_folder(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM watched_folders WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     // -- Ignore Patterns --
 
-    pub fn get_ignore_patterns(&self) -> Result<Vec<String>> {
+    pub fn get_ignore_patterns_with_ids(&self) -> Result<Vec<IgnorePattern>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT pattern FROM ignore_patterns")?;
-        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut stmt = conn.prepare_cached("SELECT id, pattern FROM ignore_patterns")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(IgnorePattern {
+                id: row.get(0)?,
+                pattern: row.get(1)?,
+            })
+        })?;
         rows.collect()
+    }
+
+    pub fn add_ignore_pattern(&self, pattern: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO ignore_patterns (pattern) VALUES (?1)",
+            params![pattern],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_ignore_pattern(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM ignore_patterns WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     // -- Files --
@@ -158,13 +191,14 @@ impl Database {
     pub fn get_files_by_status(&self, filter: &str) -> Result<Vec<FileRecord>> {
         let conn = self.conn.lock().unwrap();
         let (where_clause, order) = match filter {
-            "inbox" => ("WHERE status = 'unread'", "ORDER BY last_modified DESC"),
+            "inbox" => ("WHERE status IN ('unread', 'read')", "ORDER BY last_modified DESC"),
+            "archive" => ("WHERE status = 'archived'", "ORDER BY last_modified DESC"),
             "pinned" => ("WHERE pinned = 1", "ORDER BY last_modified DESC"),
             "reminders" => ("WHERE reminder_time IS NOT NULL", "ORDER BY reminder_time ASC"),
             _ => ("", "ORDER BY last_modified DESC"),
         };
         let sql = format!("SELECT {} FROM files {} {}", Self::FILE_COLUMNS, where_clause, order);
-        let mut stmt = conn.prepare(&sql)?;
+        let mut stmt = conn.prepare_cached(&sql)?;
         let rows = stmt.query_map([], Self::row_to_file_record)?;
         rows.collect()
     }
@@ -203,7 +237,7 @@ impl Database {
             "SELECT {} FROM files WHERE reminder_time IS NOT NULL AND reminder_time <= ?1 AND status != 'unread'",
             Self::FILE_COLUMNS
         );
-        let mut stmt = conn.prepare(&sql)?;
+        let mut stmt = conn.prepare_cached(&sql)?;
         let rows = stmt.query_map(params![now], Self::row_to_file_record)?;
         rows.collect()
     }
@@ -215,7 +249,7 @@ impl Database {
             "SELECT {} FROM files WHERE path LIKE ?1 ORDER BY last_modified DESC LIMIT 20",
             Self::FILE_COLUMNS
         );
-        let mut stmt = conn.prepare(&sql)?;
+        let mut stmt = conn.prepare_cached(&sql)?;
         let rows = stmt.query_map(params![pattern], Self::row_to_file_record)?;
         rows.collect()
     }

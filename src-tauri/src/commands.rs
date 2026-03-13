@@ -1,5 +1,6 @@
 use crate::db::Database;
 use crate::git;
+use crate::watcher::WatcherHandle;
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::{Manager, State};
@@ -90,8 +91,14 @@ pub fn save_file(path: &str, content: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn add_watched_folder(db: State<'_, Arc<Database>>, path: &str) -> Result<(), String> {
-    db.add_watched_folder(path).map_err(|e| e.to_string())
+pub fn add_watched_folder(
+    db: State<'_, Arc<Database>>,
+    watcher: State<'_, WatcherHandle>,
+    path: &str,
+) -> Result<(), String> {
+    db.add_watched_folder(path).map_err(|e| e.to_string())?;
+    watcher.restart();
+    Ok(())
 }
 
 #[tauri::command]
@@ -99,6 +106,17 @@ pub fn get_watched_folders(
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<crate::db::WatchedFolder>, String> {
     db.get_watched_folders().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_watched_folder(
+    db: State<'_, Arc<Database>>,
+    watcher: State<'_, WatcherHandle>,
+    id: i64,
+) -> Result<(), String> {
+    db.remove_watched_folder(id).map_err(|e| e.to_string())?;
+    watcher.restart();
+    Ok(())
 }
 
 #[tauri::command]
@@ -127,4 +145,75 @@ pub fn toggle_always_on_top(app: tauri::AppHandle) -> Result<bool, String> {
         .set_always_on_top(new_state)
         .map_err(|e| e.to_string())?;
     Ok(new_state)
+}
+
+// -- Settings commands --
+
+#[tauri::command]
+pub fn get_ignore_patterns(
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<crate::db::IgnorePattern>, String> {
+    db.get_ignore_patterns_with_ids().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_ignore_pattern(
+    db: State<'_, Arc<Database>>,
+    watcher: State<'_, WatcherHandle>,
+    pattern: &str,
+) -> Result<(), String> {
+    db.add_ignore_pattern(pattern).map_err(|e| e.to_string())?;
+    watcher.restart();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_ignore_pattern(
+    db: State<'_, Arc<Database>>,
+    watcher: State<'_, WatcherHandle>,
+    id: i64,
+) -> Result<(), String> {
+    db.remove_ignore_pattern(id).map_err(|e| e.to_string())?;
+    watcher.restart();
+    Ok(())
+}
+
+// -- External app commands --
+
+#[tauri::command]
+pub fn get_file_mtime(path: &str) -> Result<String, String> {
+    Ok(crate::watcher::get_file_mtime_string(path))
+}
+
+#[tauri::command]
+pub fn open_in_finder(path: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_in_vscode(path: &str) -> Result<(), String> {
+    std::process::Command::new("code")
+        .arg(path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_in_terminal(path: &str) -> Result<(), String> {
+    let parent = std::path::Path::new(path)
+        .parent()
+        .ok_or("No parent directory")?;
+    std::process::Command::new("open")
+        .arg("-a")
+        .arg("Terminal")
+        .arg(parent)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

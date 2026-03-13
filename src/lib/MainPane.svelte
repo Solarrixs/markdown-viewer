@@ -1,5 +1,6 @@
 <script lang="ts">
   import TabBar from './TabBar.svelte';
+  import NoteToolbar from './NoteToolbar.svelte';
   import RenderedMarkdown from './RenderedMarkdown.svelte';
   import DiffView from './DiffView.svelte';
   import Editor from './Editor.svelte';
@@ -8,6 +9,7 @@
 
 <div class="main-pane">
   <TabBar />
+  <NoteToolbar />
   <div class="content">
     {#if !$activeFilePath}
       <div class="welcome">

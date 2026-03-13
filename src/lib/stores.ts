@@ -33,7 +33,18 @@ export interface OpenTab {
   deletions: number;
 }
 
-export type Section = 'inbox' | 'pinned' | 'reminders';
+export interface WatchedFolder {
+  id: number;
+  path: string;
+  active: boolean;
+}
+
+export interface IgnorePattern {
+  id: number;
+  pattern: string;
+}
+
+export type Section = 'inbox' | 'pinned' | 'reminders' | 'archive';
 
 // Current section
 export const currentSection = writable<Section>('inbox');
@@ -74,3 +85,14 @@ export const fileContent = writable<string>('');
 // Diff result cache
 export const fileDiff = writable<DiffResult | null>(null);
 
+// Settings modal open
+export const settingsOpen = writable<boolean>(false);
+
+// Always on top state
+export const alwaysOnTop = writable<boolean>(false);
+
+// Saved indicator flash
+export const savedIndicator = writable<boolean>(false);
+
+// Editor text (promoted from Editor local state for auto-save)
+export const editText = writable<string>('');

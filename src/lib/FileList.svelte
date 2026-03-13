@@ -12,7 +12,7 @@
 <div class="file-list">
   {#if $inboxItems.length === 0}
     <div class="empty">
-      <span class="check">&#x2713;</span>
+      <span class="check">✓</span>
       <p>All caught up</p>
     </div>
   {:else}
@@ -45,7 +45,7 @@
     align-items: center;
     justify-content: center;
     height: 200px;
-    color: #555;
+    color: #999;
   }
   .check { font-size: 32px; color: #4ec9b0; }
   .empty p { margin-top: 8px; font-size: 13px; }

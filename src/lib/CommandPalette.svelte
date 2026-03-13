@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { commandPaletteOpen, inboxItems, activeFilePath } from './stores';
-  import { refreshItems, switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile } from './actions';
+  import { commandPaletteOpen, inboxItems, activeFilePath, settingsOpen } from './stores';
+  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile } from './actions';
   import { invoke } from '@tauri-apps/api/core';
 
   let query = '';
@@ -17,13 +17,15 @@
 
   const actions: PaletteItem[] = [
     { label: 'Archive file', hint: 'E', type: 'action', action: () => { archiveFile(); close(); } },
-    { label: 'Pin / Unpin file', hint: 'S', type: 'action', action: () => { togglePin(); close(); } },
+    { label: 'Pin / Unpin file', hint: 'P', type: 'action', action: () => { togglePin(); close(); } },
     { label: 'Set reminder', hint: 'H', type: 'action', action: () => {} },
     { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => {} },
     { label: 'Toggle always on top', hint: '', type: 'action', action: () => { toggleAlwaysOnTop(); close(); } },
     { label: 'Go to Inbox', hint: 'G I', type: 'action', action: () => { switchSection('inbox'); close(); } },
     { label: 'Go to Pinned', hint: 'G P', type: 'action', action: () => { switchSection('pinned'); close(); } },
     { label: 'Go to Reminders', hint: 'G R', type: 'action', action: () => { switchSection('reminders'); close(); } },
+    { label: 'Go to Archive', hint: 'G A', type: 'action', action: () => { switchSection('archive'); close(); } },
+    { label: 'Open Settings', hint: 'Cmd+,', type: 'action', action: () => { settingsOpen.set(true); close(); } },
   ];
 
   let fileResults: PaletteItem[] = [];
@@ -49,10 +51,13 @@
   }
 
   $: allResults = [...filteredActions, ...fileResults];
+  $: if (selectedResultIndex >= allResults.length) {
+    selectedResultIndex = Math.max(0, allResults.length - 1);
+  }
 
   async function searchFiles(q: string) {
     try {
-      const results = await invoke<any[]>('search_files', { query: q });
+      const results = await invoke<{ path: string; filename: string }[]>('search_files', { query: q });
       fileResults = results.map(r => ({
         label: r.filename,
         hint: r.path,
@@ -66,10 +71,11 @@
 
   async function openSearchResult(result: { path: string; filename: string }) {
     close();
-    await openFile({ path: result.path, filename: result.filename, status: 'read', pinned: false, reminder_time: null, last_modified: null, additions: 0, deletions: 0 });
+    await openFile({ path: result.path, filename: result.filename });
   }
 
   function close() {
+    clearTimeout(searchDebounceTimer);
     commandPaletteOpen.set(false);
   }
 

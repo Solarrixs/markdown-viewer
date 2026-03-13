@@ -7,6 +7,7 @@
     { id: 'inbox', label: 'Inbox' },
     { id: 'pinned', label: 'Pinned' },
     { id: 'reminders', label: 'Reminders' },
+    { id: 'archive', label: 'Archive' },
   ];
 </script>
 
@@ -27,25 +28,25 @@
     display: flex;
     gap: 2px;
     padding: 8px 8px 0;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid #3a3a3a;
   }
   .tab {
     flex: 1;
     padding: 6px 8px;
     background: transparent;
     border: none;
-    color: #888;
+    color: #bbb;
     font-size: 12px;
     cursor: pointer;
     border-radius: 4px 4px 0 0;
     transition: all 0.15s;
   }
   .tab:hover {
-    color: #ccc;
+    color: #e0e0e0;
     background: #1e1e1e;
   }
   .tab.active {
-    color: #e0e0e0;
+    color: #fff;
     background: #1e1e1e;
     border-bottom: 2px solid #5b9bd5;
   }
