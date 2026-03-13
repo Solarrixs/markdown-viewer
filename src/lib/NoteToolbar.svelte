@@ -55,8 +55,8 @@
     justify-content: space-between;
     height: 32px;
     padding: 0 8px;
-    background: #1a1a1a;
-    border-bottom: 1px solid #333;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
   .toolbar-left {
@@ -75,18 +75,18 @@
     padding: 2px 6px;
     background: transparent;
     border: none;
-    color: #bbb;
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
     border-radius: 3px;
     white-space: nowrap;
   }
   .tool-btn:hover {
-    background: #333;
-    color: #f0f0f0;
+    background: var(--bg-hover);
+    color: var(--text-heading);
   }
   .tool-btn.active {
-    color: #5b9bd5;
+    color: var(--accent);
   }
   .btn-label {
     font-size: 10px;
@@ -94,9 +94,9 @@
   .tool-btn :global(kbd) {
     font-size: 9px;
     font-family: monospace;
-    color: #666;
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
+    color: var(--text-disabled);
+    background: var(--bg-active);
+    border: 1px solid var(--border);
     border-radius: 2px;
     padding: 0 3px;
     margin-left: 2px;
@@ -104,16 +104,16 @@
   .separator {
     width: 1px;
     height: 16px;
-    background: #444;
+    background: var(--border);
     margin: 0 4px;
   }
   .reminder-badge {
     font-size: 10px;
-    color: #5b9bd5;
+    color: var(--accent);
     margin-right: 12px;
   }
   .last-edited {
     font-size: 10px;
-    color: #999;
+    color: var(--text-secondary);
   }
 </style>

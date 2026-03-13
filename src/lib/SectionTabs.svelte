@@ -28,26 +28,26 @@
     display: flex;
     gap: 2px;
     padding: 8px 8px 0;
-    border-bottom: 1px solid #3a3a3a;
+    border-bottom: 1px solid var(--border);
   }
   .tab {
     flex: 1;
     padding: 6px 8px;
     background: transparent;
     border: none;
-    color: #bbb;
+    color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     border-radius: 4px 4px 0 0;
-    transition: all 0.15s;
+    transition: all var(--duration-normal) ease;
   }
   .tab:hover {
-    color: #e0e0e0;
-    background: #1e1e1e;
+    color: var(--text-primary);
+    background: var(--bg-elevated);
   }
   .tab.active {
-    color: #fff;
-    background: #1e1e1e;
-    border-bottom: 2px solid #5b9bd5;
+    color: var(--text-heading);
+    background: var(--bg-elevated);
+    border-bottom: 2px solid var(--accent);
   }
 </style>

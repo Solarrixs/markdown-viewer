@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, afterUpdate } from 'svelte';
   import { get } from 'svelte/store';
   import { activeFilePath, editText, fileContent, savedIndicator, scrollRatio } from './stores';
   import { saveContent } from './actions';
@@ -53,19 +53,22 @@
 
   onMount(() => {
     if (textarea) {
+      const ratio = get(scrollRatio);
+      // Double rAF ensures browser has completed layout with full textarea content
       requestAnimationFrame(() => {
-        const ratio = get(scrollRatio);
-        textarea.scrollTop = ratio * (textarea.scrollHeight - textarea.clientHeight);
-        // Place cursor at the approximate line
-        const lines = $editText.split('\n');
-        const totalLines = lines.length;
-        const targetLine = Math.round(ratio * totalLines);
-        let charPos = 0;
-        for (let i = 0; i < targetLine && i < lines.length; i++) {
-          charPos += lines[i].length + 1;
-        }
-        textarea.selectionStart = textarea.selectionEnd = charPos;
-        textarea.focus();
+        requestAnimationFrame(() => {
+          textarea.scrollTop = ratio * (textarea.scrollHeight - textarea.clientHeight);
+          // Place cursor at the approximate line
+          const lines = $editText.split('\n');
+          const totalLines = lines.length;
+          const targetLine = Math.round(ratio * totalLines);
+          let charPos = 0;
+          for (let i = 0; i < targetLine && i < lines.length; i++) {
+            charPos += lines[i].length + 1;
+          }
+          textarea.selectionStart = textarea.selectionEnd = charPos;
+          textarea.focus();
+        });
       });
     }
   });
@@ -113,25 +116,25 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 0;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
     margin-bottom: 8px;
   }
   .mode-label {
     font-size: 11px;
     font-weight: 600;
-    color: #5b9bd5;
+    color: var(--accent);
     letter-spacing: 1px;
   }
   .hint {
     font-size: 11px;
-    color: #999;
+    color: var(--text-secondary);
   }
   .editor-textarea {
     flex: 1;
     width: 100%;
     background: transparent;
     border: none;
-    color: #eee;
+    color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 14px;
     line-height: 1.6;

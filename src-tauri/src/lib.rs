@@ -204,6 +204,8 @@ pub fn run() {
             commands::ensure_file_tracked,
             commands::open_in_finder,
             commands::open_in_terminal,
+            commands::restore_file,
+            commands::search_file_contents,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

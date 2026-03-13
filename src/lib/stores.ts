@@ -101,7 +101,7 @@ export const editText = writable<string>('');
 export const selfSaveInFlight = writable<boolean>(false);
 
 // Table of contents panel visible
-export const showToc = writable<boolean>(false);
+export const showToc = writable<boolean>(true);
 
 // Scroll position ratio (0-1) preserved across edit/view toggles
 export const scrollRatio = writable<number>(0);
@@ -112,3 +112,20 @@ export const tick = readable(0, (set) => {
   const interval = setInterval(() => set(++count), 60_000);
   return () => clearInterval(interval);
 });
+
+export interface ToastItem {
+  id: number;
+  message: string;
+  undoAction: (() => Promise<void>) | null;
+  timestamp: number;
+}
+export const toasts = writable<ToastItem[]>([]);
+
+export const shortcutHelpOpen = writable<boolean>(false);
+
+export const findBarOpen = writable<boolean>(false);
+
+export const splitPath = writable<string | null>(null);
+export const splitContent = writable<string>('');
+export const splitDiff = writable<DiffResult | null>(null);
+export const activeSplit = writable<'left' | 'right'>('left');

@@ -7,6 +7,8 @@
   import CommandPalette from './lib/CommandPalette.svelte';
   import ReminderPicker from './lib/ReminderPicker.svelte';
   import SettingsModal from './lib/SettingsModal.svelte';
+  import ShortcutHelp from './lib/ShortcutHelp.svelte';
+  import Toast from './lib/Toast.svelte';
   import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog } from './lib/actions';
   import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight } from './lib/stores';
   import { get } from 'svelte/store';
@@ -61,18 +63,40 @@
   <CommandPalette />
   <ReminderPicker />
   <SettingsModal />
+  <ShortcutHelp />
+  <Toast />
 </KeyboardHandler>
 
 <style>
+  :global(:root) {
+    --bg-base: #161616;
+    --bg-surface: #1c1c1c;
+    --bg-elevated: #1e1e1e;
+    --bg-overlay: #1e1e1e;
+    --bg-hover: #242424;
+    --bg-active: #2a2a2a;
+    --border: #2a2a2a;
+    --border-subtle: #222;
+    --text-primary: rgba(255, 255, 255, 0.87);
+    --text-heading: #f0f0f0;
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-disabled: rgba(255, 255, 255, 0.38);
+    --accent: #5b9bd5;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+    --duration-fast: 100ms;
+    --duration-normal: 150ms;
+    --duration-slow: 200ms;
+  }
   :global(*) {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #1e1e1e;
-    color: #eee;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-base);
+    color: var(--text-primary);
     overflow: hidden;
   }
   .app {

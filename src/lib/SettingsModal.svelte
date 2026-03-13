@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade, scale } from 'svelte/transition';
   import { settingsOpen } from './stores';
   import type { WatchedFolder, IgnorePattern } from './stores';
   import { invoke } from '@tauri-apps/api/core';
@@ -65,8 +66,8 @@
 </script>
 
 {#if $settingsOpen}
-  <div class="backdrop" on:click={close} on:keydown={(e) => { if (e.key === 'Escape') close(); }} role="button" tabindex="-1">
-    <div class="modal" on:click|stopPropagation on:keydown={handleKeydown} role="dialog" tabindex="-1">
+  <div class="backdrop" transition:fade={{ duration: 150 }} on:click={close} on:keydown={(e) => { if (e.key === 'Escape') close(); }} role="button" tabindex="-1">
+    <div class="modal" transition:scale={{ start: 0.98, duration: 150 }} on:click|stopPropagation on:keydown={handleKeydown} role="dialog" tabindex="-1">
       <div class="modal-header">
         <h2>Settings</h2>
         <button class="close-btn" on:click={close}>&times;</button>
@@ -121,8 +122,8 @@
   .modal {
     width: 520px;
     max-height: 500px;
-    background: #252525;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     display: flex;
@@ -135,34 +136,34 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px 12px;
-    border-bottom: 1px solid #3a3a3a;
+    border-bottom: 1px solid var(--border);
   }
   .modal-header h2 {
     font-size: 16px;
     font-weight: 600;
-    color: #e0e0e0;
+    color: var(--text-primary);
     margin: 0;
   }
   .close-btn {
     background: transparent;
     border: none;
-    color: #666;
+    color: var(--text-disabled);
     font-size: 20px;
     cursor: pointer;
     padding: 0 4px;
   }
-  .close-btn:hover { color: #ccc; }
+  .close-btn:hover { color: var(--text-secondary); }
   .section {
     padding: 16px 20px;
   }
   .section + .section {
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid var(--border-subtle);
   }
   .section h3 {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #888;
+    color: var(--text-secondary);
     margin: 0 0 8px;
   }
   .list {
@@ -178,12 +179,12 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 8px;
-    background: #1e1e1e;
+    background: var(--bg-base);
     border-radius: 4px;
   }
   .item-text {
     font-size: 12px;
-    color: #ccc;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -193,12 +194,12 @@
   .item-text code {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 11px;
-    color: #5b9bd5;
+    color: var(--accent);
   }
   .remove-btn {
     background: transparent;
     border: none;
-    color: #555;
+    color: var(--text-disabled);
     font-size: 16px;
     cursor: pointer;
     padding: 0 4px;
@@ -207,14 +208,14 @@
   .remove-btn:hover { color: #d16969; }
   .add-btn {
     padding: 6px 12px;
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-active);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #ccc;
+    color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
   }
-  .add-btn:hover { background: #333; }
+  .add-btn:hover { background: var(--bg-hover); }
   .add-pattern {
     display: flex;
     gap: 8px;
@@ -222,14 +223,14 @@
   .pattern-input {
     flex: 1;
     padding: 6px 10px;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-size: 12px;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     outline: none;
   }
-  .pattern-input:focus { border-color: #5b9bd5; }
-  .pattern-input::placeholder { color: #555; }
+  .pattern-input:focus { border-color: var(--accent); }
+  .pattern-input::placeholder { color: var(--text-disabled); }
 </style>

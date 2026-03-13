@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc } from './stores';
-  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile, openFileDialog, openFilePath, openInFinder, openInTerminal, copyPath, reopenLastClosedTab } from './actions';
+  import { fade, scale } from 'svelte/transition';
+  import { get } from 'svelte/store';
+  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc, sectionItems, selectedIndex } from './stores';
+  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile, openFileDialog, openFilePath, openInFinder, openInTerminal, copyPath, reopenLastClosedTab, openInSplit, closeSplit, saveIfDirty } from './actions';
   import { invoke } from '@tauri-apps/api/core';
 
   let query = '';
@@ -11,7 +13,7 @@
   interface PaletteItem {
     label: string;
     hint: string;
-    type: 'action' | 'file' | 'path';
+    type: 'action' | 'file' | 'path' | 'content';
     action: () => void;
   }
 
@@ -25,7 +27,7 @@
     { label: 'Archive file', hint: 'E', type: 'action', action: () => { archiveFile(); close(); } },
     { label: 'Pin / Unpin file', hint: 'P', type: 'action', action: () => { togglePin(); close(); } },
     { label: 'Set reminder', hint: 'H', type: 'action', action: () => { close(); reminderPickerOpen.set(true); } },
-    { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => { editMode.update(v => !v); close(); } },
+    { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => { saveIfDirty().then(() => { editMode.update(v => !v); close(); }); } },
     { label: 'Reveal in Finder', hint: 'F', type: 'action', action: () => { openInFinder(); close(); } },
     { label: 'Open in Terminal', hint: 'T', type: 'action', action: () => { openInTerminal(); close(); } },
     { label: 'Copy file path', hint: 'C', type: 'action', action: () => { copyPath(); close(); } },
@@ -37,14 +39,18 @@
     { label: 'Go to Archive', hint: 'G A', type: 'action', action: () => { switchSection('archive'); close(); } },
     { label: 'Open Settings', hint: 'Cmd+,', type: 'action', action: () => { settingsOpen.set(true); close(); } },
     { label: 'Reopen last closed tab', hint: 'Cmd+Shift+T', type: 'action', action: () => { close(); reopenLastClosedTab(); } },
+    { label: 'Split view: open right', hint: 'Cmd+Enter', type: 'action', action: () => { const items = get(sectionItems); const idx = get(selectedIndex); if (items[idx]) { openInSplit(items[idx]); } close(); } },
+    { label: 'Split view: close', hint: '', type: 'action', action: () => { closeSplit(); close(); } },
   ];
 
   let fileResults: PaletteItem[] = [];
+  let contentResults: PaletteItem[] = [];
 
   $: if ($commandPaletteOpen) {
     query = '';
     selectedResultIndex = 0;
     fileResults = [];
+    contentResults = [];
     setTimeout(() => inputEl?.focus(), 50);
   }
 
@@ -56,10 +62,12 @@
     clearTimeout(searchDebounceTimer);
     if (isPathQuery) {
       fileResults = [];
+      contentResults = [];
     } else if (query.length >= 2) {
-      searchDebounceTimer = setTimeout(() => searchFiles(query), 150);
+      searchDebounceTimer = setTimeout(() => { searchFiles(query); searchContent(query); }, 150);
     } else {
       fileResults = [];
+      contentResults = [];
     }
   }
 
@@ -77,6 +85,9 @@
     }
     if (fileResults.length > 0) {
       result.push({ label: 'Files', items: fileResults });
+    }
+    if (contentResults.length > 0) {
+      result.push({ label: 'Content', items: contentResults });
     }
     return result;
   })();
@@ -97,6 +108,23 @@
       }));
     } catch {
       fileResults = [];
+    }
+  }
+
+  async function searchContent(q: string) {
+    try {
+      const results = await invoke<{ path: string; filename: string; line_number: number; context: string }[]>('search_file_contents', { query: q });
+      contentResults = results.map(r => ({
+        label: r.filename,
+        hint: r.context,
+        type: 'content' as const,
+        action: () => {
+          close();
+          openFile({ path: r.path, filename: r.filename });
+        },
+      }));
+    } catch {
+      contentResults = [];
     }
   }
 
@@ -128,8 +156,8 @@
 </script>
 
 {#if $commandPaletteOpen}
-  <div class="backdrop" on:click={close} on:keydown={(e) => { if (e.key === 'Escape') close(); }} role="button" tabindex="-1">
-    <div class="palette" on:click|stopPropagation role="dialog" tabindex="-1" on:keydown={() => {}}>
+  <div class="backdrop" transition:fade={{ duration: 150 }} on:click={close} on:keydown={(e) => { if (e.key === 'Escape') close(); }} role="button" tabindex="-1">
+    <div class="palette" transition:scale={{ start: 0.98, duration: 150 }} on:click|stopPropagation role="dialog" tabindex="-1" on:keydown={() => {}}>
       <input
         bind:this={inputEl}
         bind:value={query}
@@ -149,7 +177,7 @@
               on:mouseenter={() => selectedResultIndex = idx}
             >
               <span class="result-label">{item.label}</span>
-              <span class="result-hint" class:file-hint={item.type === 'file'}>{item.hint}</span>
+              <span class="result-hint" class:file-hint={item.type === 'file'} class:content-hint={item.type === 'content'}>{item.hint}</span>
             </button>
           {/each}
         {/each}
@@ -174,8 +202,8 @@
   .palette {
     width: 500px;
     max-height: 400px;
-    background: #252525;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     display: flex;
@@ -188,13 +216,13 @@
     padding: 12px 16px;
     background: transparent;
     border: none;
-    border-bottom: 1px solid #3a3a3a;
-    color: #e0e0e0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
     font-size: 14px;
     outline: none;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  .search-input::placeholder { color: #555; }
+  .search-input::placeholder { color: var(--text-disabled); }
   .results {
     overflow-y: auto;
     max-height: 340px;
@@ -204,7 +232,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #666;
+    color: var(--text-disabled);
     padding: 8px 12px 4px;
   }
   .result {
@@ -215,14 +243,22 @@
     padding: 8px 12px;
     background: transparent;
     border: none;
-    color: #ccc;
+    color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
     border-radius: 4px;
     text-align: left;
   }
-  .result:hover, .result.selected { background: #333; }
-  .result-hint { color: #666; font-size: 11px; font-family: monospace; }
+  .result:hover, .result.selected { background: var(--bg-hover); }
+  .result-hint { color: var(--text-disabled); font-size: 11px; font-family: monospace; }
   .file-hint { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .no-results { padding: 16px; text-align: center; color: #555; font-size: 13px; }
+  .content-hint {
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-disabled);
+  }
+  .no-results { padding: 16px; text-align: center; color: var(--text-disabled); font-size: 13px; }
 </style>

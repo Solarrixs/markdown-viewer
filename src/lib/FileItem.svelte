@@ -48,16 +48,16 @@
     justify-content: space-between;
     padding: 6px 12px;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background-color var(--duration-fast) ease;
     font-size: 13px;
     border-left: 2px solid transparent;
   }
-  .file-item:hover { background: #252525; }
+  .file-item:hover { background: var(--bg-hover); }
   .file-item.selected {
-    background: #222236;
-    border-left-color: #5b9bd5;
+    background: var(--bg-active);
+    border-left-color: var(--accent);
   }
-  .file-item.unread .filename { color: #fff; font-weight: 500; }
+  .file-item.unread .filename { color: var(--text-heading); font-weight: 500; }
   .left {
     display: flex;
     align-items: center;
@@ -69,12 +69,12 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #5b9bd5;
+    background: var(--accent);
     flex-shrink: 0;
   }
   .dot-placeholder { width: 6px; flex-shrink: 0; }
   .filename {
-    color: #ccc;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -89,18 +89,18 @@
   .diff-badge { font-size: 10px; font-family: monospace; }
   .add { color: #4ec9b0; }
   .del { color: #d16969; }
-  .time { color: #999; font-size: 11px; }
+  .time { color: var(--text-secondary); font-size: 11px; }
   .dismiss {
     display: none;
     background: transparent;
     border: none;
-    color: #666;
+    color: var(--text-disabled);
     font-size: 14px;
     cursor: pointer;
     padding: 0 2px;
     line-height: 1;
     flex-shrink: 0;
   }
-  .dismiss:hover { color: #e0e0e0; }
+  .dismiss:hover { color: var(--text-primary); }
   .file-item:hover .dismiss { display: block; }
 </style>

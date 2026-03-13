@@ -9,6 +9,7 @@
     id: string;
     text: string;
     level: number;
+    el: Element;
   }
 
   let entries: TocEntry[] = [];
@@ -20,9 +21,9 @@
   function extractHeadings() {
     if (!containerEl) return;
 
-    // Dirty check: skip if content hasn't changed
+    // Dirty check: skip if content hasn't changed (unless entries are empty)
     const content = $fileContent;
-    if (content === lastContentRef) return;
+    if (content === lastContentRef && entries.length > 0) return;
     lastContentRef = content;
 
     const headings = containerEl.querySelectorAll('h1, h2, h3, h4');
@@ -36,19 +37,26 @@
     }
     lastHeadingCount = headings.length;
 
-    entries = Array.from(headings).map((el) => ({
-      id: el.id,
-      text: el.textContent || '',
-      level: parseInt(el.tagName[1]),
-    }));
-    setupObserver();
+    // Assign IDs to headings that don't have them yet (in case our
+    // afterUpdate runs before RenderedMarkdown's heading ID assignment)
+    headings.forEach((el, i) => {
+      if (!el.id) el.id = `heading-${i}`;
+    });
+
+    entries = Array.from(headings)
+      .map((el) => ({
+        id: el.id,
+        text: el.textContent || '',
+        level: parseInt(el.tagName[1]),
+        el,
+      }));
+    if (entries.length > 0) setupObserver();
   }
 
   function setupObserver() {
     if (observer) observer.disconnect();
     if (!scrollParent || entries.length === 0) return;
 
-    // Track which headings are visible, pick the topmost
     const visibleIds = new Set<string>();
 
     observer = new IntersectionObserver(
@@ -60,7 +68,6 @@
             visibleIds.delete(entry.target.id);
           }
         }
-        // Pick the topmost visible heading by DOM order
         for (const e of entries) {
           if (visibleIds.has(e.id)) {
             activeId = e.id;
@@ -76,14 +83,13 @@
     );
 
     for (const e of entries) {
-      const el = containerEl.querySelector(`#${e.id}`);
-      if (el) observer.observe(el);
+      observer.observe(e.el);
     }
   }
 
   function jumpTo(id: string) {
-    const el = containerEl.querySelector(`#${id}`);
-    if (el) el.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+    const entry = entries.find(e => e.id === id);
+    if (entry) entry.el.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
   }
 
   afterUpdate(extractHeadings);
@@ -93,6 +99,7 @@
   });
 </script>
 
+{#if entries.length > 0}
 <nav class="toc">
   {#each entries as entry}
     <button
@@ -105,6 +112,7 @@
     </button>
   {/each}
 </nav>
+{/if}
 
 <style>
   .toc {
@@ -112,11 +120,11 @@
     right: 16px;
     top: 50%;
     transform: translateY(-50%);
-    max-width: 200px;
+    width: 180px;
     max-height: 60vh;
     overflow-y: auto;
-    opacity: 0.15;
-    transition: opacity 200ms ease, background-color 200ms ease;
+    opacity: 0.2;
+    transition: opacity 0.2s ease;
     pointer-events: auto;
     display: flex;
     flex-direction: column;
@@ -132,7 +140,7 @@
   }
   .toc:hover {
     opacity: 1;
-    background: rgba(26, 26, 26, 0.9);
+    background: var(--bg-elevated);
   }
   .toc-entry {
     display: block;
@@ -140,7 +148,7 @@
     text-align: left;
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.4;
     cursor: pointer;
@@ -149,13 +157,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
   .toc-entry:hover {
-    color: #ccc;
+    color: var(--text-primary);
     background: rgba(255, 255, 255, 0.05);
   }
   .toc-entry.active {
-    color: #5b9bd5;
+    color: var(--accent);
   }
 </style>

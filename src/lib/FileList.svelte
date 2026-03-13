@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { slide, fade } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
   import { sectionItems, selectedIndex } from './stores';
   import type { InboxItem } from './stores';
   import FileItem from './FileItem.svelte';
@@ -16,8 +18,8 @@
       <p>All caught up</p>
     </div>
   {:else}
-    {#each $sectionItems as item, i}
-      <button class="file-button" on:click={() => handleClick(item, i)}>
+    {#each $sectionItems as item, i (item.path)}
+      <button class="file-button" animate:flip={{ duration: 200 }} transition:slide|local={{ duration: 200 }} on:click={() => handleClick(item, i)}>
         <FileItem {item} selected={$selectedIndex === i} on:dismiss={() => archiveByPath(item.path)} />
       </button>
     {/each}
@@ -45,7 +47,7 @@
     align-items: center;
     justify-content: center;
     height: 200px;
-    color: #999;
+    color: var(--text-secondary);
   }
   .check { font-size: 32px; color: #4ec9b0; }
   .empty p { margin-top: 8px; font-size: 13px; }

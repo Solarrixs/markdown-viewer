@@ -16,10 +16,11 @@
     width: 260px;
     min-width: 200px;
     max-width: 400px;
-    background: #161616;
-    border-right: 1px solid #3a3a3a;
+    background: var(--bg-base);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     height: 100%;
+    transition: width var(--duration-slow) var(--ease-out);
   }
 </style>

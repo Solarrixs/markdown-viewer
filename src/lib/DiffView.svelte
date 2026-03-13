@@ -33,7 +33,7 @@
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 13px;
     line-height: 1.5;
-    background: #1a1a1a;
+    background: var(--bg-base);
     border-radius: 6px;
     padding: 16px;
     overflow-x: auto;
@@ -42,13 +42,13 @@
   }
   .diff-content :global(.added) { color: #4ec9b0; background: rgba(78, 201, 176, 0.1); display: inline; }
   .diff-content :global(.removed) { color: #d16969; background: rgba(209, 105, 105, 0.1); display: inline; }
-  .diff-content :global(.context) { color: #666; display: inline; }
+  .diff-content :global(.context) { color: var(--text-disabled); display: inline; }
   .no-diff {
     display: flex;
     align-items: center;
     justify-content: center;
     height: 200px;
-    color: #555;
+    color: var(--text-disabled);
     font-size: 13px;
   }
 </style>

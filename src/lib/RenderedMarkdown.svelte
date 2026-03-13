@@ -29,23 +29,36 @@
       .replace(/<\s*\/?\s*(script|iframe|object|embed|form|link|meta|style)[^>]*>/gi, '');
   }
 
-  $: rendered = sanitizeHtml(md.render($fileContent));
+  // Parse YAML frontmatter (--- delimited block at start of file)
+  function parseFrontmatter(content: string): { meta: Record<string, string> | null; body: string } {
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+    if (!match) return { meta: null, body: content };
+    const raw = match[1];
+    const meta: Record<string, string> = {};
+    for (const line of raw.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx > 0) {
+        const key = line.slice(0, idx).trim();
+        const val = line.slice(idx + 1).trim();
+        if (key) meta[key] = val;
+      }
+    }
+    return { meta: Object.keys(meta).length > 0 ? meta : null, body: content.slice(match[0].length) };
+  }
+
+  $: ({ meta: frontmatter, body: markdownBody } = parseFrontmatter($fileContent));
+  $: rendered = sanitizeHtml(md.render(markdownBody));
 
   export let containerEl: HTMLDivElement = undefined!;
 
-  // Inject heading IDs only when rendered content changes
-  let lastRendered = '';
-  $: if (rendered !== lastRendered) {
-    lastRendered = rendered;
-    // Wait for DOM update before injecting IDs
-    requestAnimationFrame(() => {
-      if (!containerEl) return;
-      const headings = containerEl.querySelectorAll('h1, h2, h3, h4');
-      headings.forEach((el, i) => {
-        el.id = `heading-${i}`;
-      });
+  // Inject heading IDs synchronously in afterUpdate
+  afterUpdate(() => {
+    if (!containerEl) return;
+    const headings = containerEl.querySelectorAll('h1, h2, h3, h4');
+    headings.forEach((el, i) => {
+      if (!el.id) el.id = `heading-${i}`;
     });
-  }
+  });
 
   // Find the index of a checkbox in the markdown source, skipping matches inside code blocks
   function findCheckboxIndices(content: string): number[] {
@@ -101,15 +114,21 @@
     return containerEl?.closest('.reader-scroll') as HTMLElement | null;
   }
 
+  function restoreScroll() {
+    const scroller = getScrollParent();
+    if (!scroller) return;
+    const ratio = get(scrollRatio);
+    // Wait for browser layout so scrollHeight is accurate
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scroller.scrollTop = ratio * (scroller.scrollHeight - scroller.clientHeight);
+      });
+    });
+  }
+
   onMount(() => {
     containerEl.addEventListener('click', handleCheckboxClick);
-    // Restore scroll position from before the toggle
-    const scroller = getScrollParent();
-    if (scroller) {
-      requestAnimationFrame(() => {
-        scroller.scrollTop = get(scrollRatio) * (scroller.scrollHeight - scroller.clientHeight);
-      });
-    }
+    restoreScroll();
   });
 
   onDestroy(() => {
@@ -125,6 +144,16 @@
 </script>
 
 <div class="markdown-body" bind:this={containerEl}>
+  {#if frontmatter}
+    <div class="frontmatter">
+      {#each Object.entries(frontmatter) as [key, value]}
+        <div class="frontmatter-row">
+          <span class="frontmatter-key">{key}</span>
+          <span class="frontmatter-value">{value}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
   {@html rendered}
 </div>
 
@@ -133,37 +162,61 @@
     max-width: 720px;
     margin: 0 auto;
     padding: 32px 24px;
-    color: #eee;
+    color: var(--text-primary);
     font-size: 15px;
     line-height: 1.7;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  .markdown-body :global(h1) { font-size: 28px; font-weight: 600; margin: 32px 0 16px; color: #fff; border-bottom: 1px solid #3a3a3a; padding-bottom: 8px; }
-  .markdown-body :global(h2) { font-size: 22px; font-weight: 600; margin: 28px 0 12px; color: #fff; }
-  .markdown-body :global(h3) { font-size: 18px; font-weight: 600; margin: 24px 0 8px; color: #f0f0f0; }
-  .markdown-body :global(h4) { font-size: 15px; font-weight: 600; margin: 20px 0 8px; color: #e0e0e0; }
+  .frontmatter {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    font-size: 13px;
+  }
+  .frontmatter-row {
+    display: flex;
+    gap: 12px;
+    padding: 3px 0;
+  }
+  .frontmatter-key {
+    color: var(--text-secondary);
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+  .frontmatter-key::after {
+    content: ':';
+  }
+  .frontmatter-value {
+    color: var(--text-primary);
+  }
+  .markdown-body :global(h1) { font-size: 28px; font-weight: 600; margin: 32px 0 16px; color: var(--text-heading); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .markdown-body :global(h2) { font-size: 22px; font-weight: 600; margin: 28px 0 12px; color: var(--text-heading); }
+  .markdown-body :global(h3) { font-size: 18px; font-weight: 600; margin: 24px 0 8px; color: var(--text-heading); }
+  .markdown-body :global(h4) { font-size: 15px; font-weight: 600; margin: 20px 0 8px; color: var(--text-primary); }
   .markdown-body :global(p) { margin: 0 0 16px; }
-  .markdown-body :global(a) { color: #5b9bd5; text-decoration: none; }
+  .markdown-body :global(a) { color: var(--accent); text-decoration: none; }
   .markdown-body :global(a:hover) { text-decoration: underline; }
   .markdown-body :global(ul), .markdown-body :global(ol) { padding-left: 24px; margin: 0 0 16px; }
   .markdown-body :global(li) { margin: 4px 0; }
-  .markdown-body :global(blockquote) { border-left: 3px solid #555; padding-left: 16px; color: #bbb; margin: 0 0 16px; }
-  .markdown-body :global(code) { background: #1e1e1e; padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-  .markdown-body :global(pre.hljs) { background: #1e1e1e; border-radius: 6px; padding: 16px; overflow-x: auto; margin: 0 0 16px; }
+  .markdown-body :global(blockquote) { border-left: 3px solid var(--text-secondary); padding-left: 16px; color: var(--text-secondary); margin: 0 0 16px; }
+  .markdown-body :global(code) { background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .markdown-body :global(pre.hljs) { background: var(--bg-elevated); border-radius: 6px; padding: 16px; overflow-x: auto; margin: 0 0 16px; }
   .markdown-body :global(pre.hljs code) { background: transparent; padding: 0; }
   .markdown-body :global(table) { width: 100%; border-collapse: collapse; margin: 0 0 16px; }
-  .markdown-body :global(th), .markdown-body :global(td) { border: 1px solid #333; padding: 8px 12px; text-align: left; }
-  .markdown-body :global(th) { background: #1e1e1e; font-weight: 600; }
-  .markdown-body :global(hr) { border: none; border-top: 1px solid #333; margin: 24px 0; }
+  .markdown-body :global(th), .markdown-body :global(td) { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  .markdown-body :global(th) { background: var(--bg-elevated); font-weight: 600; }
+  .markdown-body :global(hr) { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
   .markdown-body :global(img) { max-width: 100%; border-radius: 4px; }
-  .markdown-body :global(strong) { color: #fff; }
+  .markdown-body :global(strong) { color: var(--text-heading); }
   /* Task list checkbox styles */
   .markdown-body :global(.task-list-item) { list-style: none; margin-left: -24px; padding-left: 0; }
   .markdown-body :global(.task-list-item input[type="checkbox"]) {
     margin-right: 8px;
     width: 16px;
     height: 16px;
-    accent-color: #5b9bd5;
+    accent-color: var(--accent);
     cursor: pointer;
     vertical-align: middle;
   }

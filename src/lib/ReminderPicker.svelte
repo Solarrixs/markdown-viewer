@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade, scale } from 'svelte/transition';
   import { reminderPickerOpen, activeFilePath } from './stores';
   import { setReminderAndArchive } from './actions';
   import { timeUntil } from './utils';
@@ -177,8 +178,8 @@
 </script>
 
 {#if $reminderPickerOpen}
-  <div class="backdrop" on:click={close} on:keydown={handleKeydown} role="button" tabindex="-1">
-    <div class="picker" on:click|stopPropagation on:keydown={() => {}} role="dialog" tabindex="-1">
+  <div class="backdrop" transition:fade={{ duration: 150 }} on:click={close} on:keydown={handleKeydown} role="button" tabindex="-1">
+    <div class="picker" transition:scale={{ start: 0.98, duration: 150 }} on:click|stopPropagation on:keydown={() => {}} role="dialog" tabindex="-1">
       <div class="header">Set Reminder</div>
       <div class="nl-input-wrap">
         <input
@@ -214,8 +215,8 @@
   }
   .picker {
     width: 300px;
-    background: #252525;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     overflow: hidden;
@@ -225,8 +226,8 @@
     padding: 12px 16px;
     font-size: 13px;
     font-weight: 600;
-    color: #e0e0e0;
-    border-bottom: 1px solid #3a3a3a;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
   }
   .nl-input-wrap {
     padding: 10px 12px 6px;
@@ -234,29 +235,29 @@
   .nl-input {
     width: 100%;
     padding: 8px 10px;
-    background: #1a1a1a;
-    border: 1px solid #3a3a3a;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #e0e0e0;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  .nl-input:focus { border-color: #5b9bd5; }
-  .nl-input::placeholder { color: #555; }
+  .nl-input:focus { border-color: var(--accent); }
+  .nl-input::placeholder { color: var(--text-disabled); }
   .preview {
     margin-top: 6px;
     font-size: 11px;
-    color: #5b9bd5;
+    color: var(--accent);
     padding: 0 2px;
   }
   .presets-label {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #555;
+    color: var(--text-disabled);
     padding: 8px 16px 4px;
-    border-top: 1px solid #3a3a3a;
+    border-top: 1px solid var(--border);
   }
   .option {
     display: block;
@@ -264,11 +265,11 @@
     padding: 10px 16px;
     background: transparent;
     border: none;
-    color: #ccc;
+    color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--duration-fast) ease;
   }
-  .option:hover { background: #333; }
+  .option:hover { background: var(--bg-hover); }
 </style>

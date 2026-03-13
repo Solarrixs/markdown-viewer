@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import {
     editMode, showDiff, showToc, commandPaletteOpen, reminderPickerOpen,
     sidebarVisible, selectedIndex, sectionItems, activeFilePath,
-    openTabs, activeTabIndex, settingsOpen,
+    openTabs, activeTabIndex, settingsOpen, shortcutHelpOpen, toasts, findBarOpen,
   } from './stores';
-  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty, openFileDialog, openInFinder, openInTerminal, copyPath, reopenLastClosedTab } from './actions';
+  import { openFile, switchSection, archiveFile, togglePin, closeActiveTab, switchTab, saveIfDirty, openFileDialog, openInFinder, openInTerminal, copyPath, reopenLastClosedTab, dismissToast, openInSplit } from './actions';
 
   let pendingChord = false;
   let chordTimeout: ReturnType<typeof setTimeout>;
@@ -31,6 +32,12 @@
     if (meta && e.key === ',') {
       e.preventDefault();
       settingsOpen.set(true);
+      return;
+    }
+    if (meta && e.key === 'Enter') {
+      e.preventDefault();
+      const item = $sectionItems[$selectedIndex];
+      if (item) openInSplit(item);
       return;
     }
     if (meta && e.key === 'e') {
@@ -65,6 +72,14 @@
       return;
     }
 
+    if (meta && e.key === 'f') {
+      if (!$editMode && $activeFilePath) {
+        e.preventDefault();
+        findBarOpen.set(true);
+      }
+      return;
+    }
+
     if (meta && e.key >= '1' && e.key <= '9') {
       e.preventDefault();
       const idx = parseInt(e.key) - 1;
@@ -74,7 +89,7 @@
       return;
     }
 
-    if ($editMode || $commandPaletteOpen || $reminderPickerOpen || $settingsOpen) return;
+    if ($editMode || $commandPaletteOpen || $reminderPickerOpen || $settingsOpen || $shortcutHelpOpen) return;
 
     if (pendingChord) {
       pendingChord = false;
@@ -132,6 +147,21 @@
       case 'g':
         pendingChord = true;
         chordTimeout = setTimeout(() => { pendingChord = false; }, 500);
+        break;
+      case '?':
+        e.preventDefault();
+        shortcutHelpOpen.update(v => !v);
+        break;
+      case 'z':
+        e.preventDefault();
+        {
+          const t = get(toasts);
+          const last = [...t].reverse().find(toast => toast.undoAction);
+          if (last) {
+            last.undoAction!();
+            dismissToast(last.id);
+          }
+        }
         break;
     }
   }

@@ -4,9 +4,24 @@ import { open } from '@tauri-apps/plugin-dialog';
 import {
   sectionItems, currentSection, selectedIndex, activeFilePath,
   openTabs, activeTabIndex, fileContent, fileDiff, editMode, showDiff,
-  alwaysOnTop, savedIndicator, editText, selfSaveInFlight,
+  alwaysOnTop, savedIndicator, editText, selfSaveInFlight, toasts,
+  splitPath, splitContent, splitDiff, activeSplit,
 } from './stores';
 import type { InboxItem, Section, DiffResult } from './stores';
+
+function extractFilename(path: string): string {
+  return path.split('/').pop() ?? 'file';
+}
+
+let toastId = 0;
+export function showToast(message: string, undoAction?: () => Promise<void>) {
+  const id = ++toastId;
+  toasts.update(t => [...t.slice(-2), { id, message, undoAction: undoAction ?? null, timestamp: Date.now() }]);
+  setTimeout(() => dismissToast(id), 4000);
+}
+export function dismissToast(id: number) {
+  toasts.update(t => t.filter(toast => toast.id !== id));
+}
 
 export interface OpenFileParams {
   path: string;
@@ -15,12 +30,33 @@ export interface OpenFileParams {
   deletions?: number;
 }
 
+let refreshInFlight = false;
+let refreshQueued = false;
+
+/** @internal Reset concurrency guard state (for tests only) */
+export function _resetRefreshState() {
+  refreshInFlight = false;
+  refreshQueued = false;
+}
+
 export async function refreshItems() {
+  // If a refresh is already in flight, queue one more (but only one)
+  if (refreshInFlight) {
+    refreshQueued = true;
+    return;
+  }
+  refreshInFlight = true;
   try {
     const items = await invoke<InboxItem[]>('get_inbox_items', { filter: get(currentSection) });
-    sectionItems.set(items);
+    sectionItems.set(items ?? []);
   } catch (e) {
     console.error('Failed to refresh items:', e);
+  } finally {
+    refreshInFlight = false;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refreshItems();
+    }
   }
 }
 
@@ -53,7 +89,7 @@ export async function switchSection(section: Section) {
   await saveIfDirty();
   currentSection.set(section);
   selectedIndex.set(0);
-  await refreshItems();
+  refreshItems();
 }
 
 export async function openFile(item: OpenFileParams, index?: number) {
@@ -80,11 +116,9 @@ export async function openFile(item: OpenFileParams, index?: number) {
     activeTabIndex.set(existingIdx);
   }
 
-  // Load content and mark as read in parallel
-  await Promise.all([
-    loadFileContent(item.path),
-    invoke('mark_as_read', { path: item.path }).catch(e => console.error('Failed to mark as read:', e)),
-  ]);
+  // Load content immediately, mark as read in background
+  await loadFileContent(item.path);
+  invoke('mark_as_read', { path: item.path }).catch(e => console.error('Failed to mark as read:', e));
 }
 
 export async function openFileDialog() {
@@ -105,18 +139,18 @@ export async function openFilePath(path: string) {
 export async function archiveFile() {
   const path = get(activeFilePath);
   if (!path) return;
+  const item = get(sectionItems).find(i => i.path === path);
+  const filename = item?.filename ?? extractFilename(path);
+  const previousStatus = item?.status ?? 'read';
+  const previousReminderTime = item?.reminder_time ?? null;
 
-  await closeTabByPath(path);
   await invoke('mark_as_archived', { path });
-  await refreshItems();
-  const items = get(sectionItems);
-  if (items.length > 0) {
-    const newIdx = Math.min(get(selectedIndex), items.length - 1);
-    selectedIndex.set(newIdx);
-    await openFile(items[newIdx]);
-  } else {
-    clearActiveFile();
-  }
+  showToast(`Archived ${filename}`, async () => {
+    await invoke('restore_file', { path, status: previousStatus, reminderTime: previousReminderTime });
+    await refreshItems();
+    await openFile({ path, filename });
+  });
+  advanceAfterRemoval(path);
 }
 
 export async function archiveByPath(path: string) {
@@ -128,8 +162,14 @@ export async function archiveByPath(path: string) {
 export async function togglePin() {
   const path = get(activeFilePath);
   if (!path) return;
-  await invoke('toggle_pin', { path });
-  await refreshItems();
+  const item = get(sectionItems).find(i => i.path === path);
+  const filename = item?.filename ?? extractFilename(path);
+  const newState = await invoke<boolean>('toggle_pin', { path });
+  showToast(`${newState ? 'Pinned' : 'Unpinned'} ${filename}`, async () => {
+    await invoke('toggle_pin', { path });
+    await refreshItems();
+  });
+  refreshItems();
 }
 
 export async function openInFinder() {
@@ -144,7 +184,10 @@ export async function openInTerminal() {
 
 export async function copyPath() {
   const path = get(activeFilePath);
-  if (path) await navigator.clipboard.writeText(path);
+  if (path) {
+    await navigator.clipboard.writeText(path);
+    showToast(`Copied ${path}`);
+  }
 }
 
 export async function toggleAlwaysOnTop(): Promise<boolean> {
@@ -159,21 +202,22 @@ export async function toggleAlwaysOnTop(): Promise<boolean> {
 }
 
 export async function loadFileContent(path: string) {
-  const [contentResult, diffResult] = await Promise.allSettled([
-    invoke<string>('get_file_content', { path }),
-    invoke<DiffResult>('get_file_diff', { path }),
-  ]);
-
-  if (contentResult.status === 'fulfilled') {
-    fileContent.set(contentResult.value);
-    editText.set(contentResult.value);
-  } else {
+  // Load content immediately, don't wait for diff
+  try {
+    const content = await invoke<string>('get_file_content', { path });
+    fileContent.set(content);
+    editText.set(content);
+  } catch (_) {
     // File no longer exists — close its tab and refresh
     await closeTabByPath(path);
     await refreshItems();
     return;
   }
-  fileDiff.set(diffResult.status === 'fulfilled' ? diffResult.value : null);
+
+  // Load diff in background — don't block on it
+  invoke<DiffResult>('get_file_diff', { path })
+    .then(diff => fileDiff.set(diff))
+    .catch(() => fileDiff.set(null));
 }
 
 const recentlyClosedTabs: OpenFileParams[] = [];
@@ -212,20 +256,23 @@ export async function closeTabByIndex(index: number) {
   }
 }
 
+async function advanceAfterRemoval(removedPath: string) {
+  await closeTabByPath(removedPath);
+  await refreshItems();
+  const items = get(sectionItems);
+  if (items.length > 0) {
+    const newIdx = Math.min(get(selectedIndex), items.length - 1);
+    selectedIndex.set(newIdx);
+    await openFile(items[newIdx]);
+  } else {
+    clearActiveFile();
+  }
+}
+
 async function closeTabByPath(path: string) {
-  await saveIfDirty();
   const idx = get(openTabs).findIndex(t => t.path === path);
   if (idx !== -1) {
-    const tabs = [...get(openTabs)];
-    tabs.splice(idx, 1);
-    openTabs.set(tabs);
-    if (tabs.length === 0) {
-      clearActiveFile();
-    } else if (get(activeTabIndex) >= tabs.length) {
-      await switchTab(tabs.length - 1);
-    } else if (get(activeTabIndex) > idx) {
-      activeTabIndex.update(i => i - 1);
-    }
+    await closeTabByIndex(idx);
   } else if (get(activeFilePath) === path) {
     clearActiveFile();
   }
@@ -242,9 +289,18 @@ export async function reopenLastClosedTab() {
 }
 
 export async function setReminderAndArchive(path: string, time: string) {
+  const item = get(sectionItems).find(i => i.path === path);
+  const filename = item?.filename ?? extractFilename(path);
+  const previousStatus = item?.status ?? 'read';
+
   await invoke('set_reminder', { path, time });
   await invoke('mark_as_archived', { path });
-  await refreshItems();
+  showToast(`Reminder set for ${filename}`, async () => {
+    await invoke('restore_file', { path, status: previousStatus, reminderTime: null });
+    await refreshItems();
+    await openFile({ path, filename });
+  });
+  advanceAfterRemoval(path);
 }
 
 export async function switchTab(index: number) {
@@ -259,4 +315,26 @@ export async function switchTab(index: number) {
   if (pathChanged) {
     await loadFileContent(tab.path);
   }
+}
+
+export async function openInSplit(item: OpenFileParams) {
+  splitPath.set(item.path);
+  activeSplit.set('right');
+  try {
+    const content = await invoke<string>('get_file_content', { path: item.path });
+    splitContent.set(content);
+  } catch (e) {
+    console.error('Failed to load split content:', e);
+    return;
+  }
+  invoke<DiffResult>('get_file_diff', { path: item.path })
+    .then(diff => splitDiff.set(diff))
+    .catch(() => splitDiff.set(null));
+}
+
+export function closeSplit() {
+  splitPath.set(null);
+  splitContent.set('');
+  splitDiff.set(null);
+  activeSplit.set('left');
 }
