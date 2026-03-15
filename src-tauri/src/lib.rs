@@ -189,6 +189,7 @@ pub fn run() {
             commands::get_file_content,
             commands::get_file_diff,
             commands::mark_as_read,
+            commands::delete_file,
             commands::mark_as_archived,
             commands::toggle_pin,
             commands::set_reminder,

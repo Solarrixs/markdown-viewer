@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, ask } from '@tauri-apps/plugin-dialog';
 import {
   sectionItems, currentSection, selectedIndex, activeFilePath,
   openTabs, activeTabIndex, fileContent, fileDiff, editMode, showDiff,
@@ -187,6 +187,24 @@ export async function renameFile(oldPath: string, newName: string): Promise<Open
   } catch (e) {
     showToast(`Rename failed: ${e}`);
     return null;
+  }
+}
+
+export async function deleteFile() {
+  const path = get(activeFilePath);
+  if (!path) return;
+  const item = get(sectionItems).find(i => i.path === path);
+  const filename = item?.filename ?? extractFilename(path);
+
+  const confirmed = await ask(`Delete "${filename}"? This cannot be undone.`, { title: 'Delete File', kind: 'warning' });
+  if (!confirmed) return;
+
+  try {
+    await invoke('delete_file', { path });
+    showToast(`Deleted ${filename}`);
+    advanceAfterRemoval(path);
+  } catch (e) {
+    showToast(`Delete failed: ${e}`);
   }
 }
 

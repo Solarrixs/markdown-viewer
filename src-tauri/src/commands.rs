@@ -72,6 +72,13 @@ pub fn mark_as_archived(db: State<'_, Arc<Database>>, path: &str) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn delete_file(db: State<'_, Arc<Database>>, path: &str) -> Result<(), String> {
+    db.delete_file(path).map_err(|e| e.to_string())?;
+    std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn toggle_pin(db: State<'_, Arc<Database>>, path: &str) -> Result<bool, String> {
     db.toggle_pinned(path).map_err(|e| e.to_string())
 }

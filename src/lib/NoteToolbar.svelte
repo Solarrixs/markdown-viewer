@@ -1,45 +1,32 @@
 <script lang="ts">
-  import { activeFilePath, sectionItems, reminderPickerOpen, showToc, tick, renameTrigger } from './stores';
-  import { togglePin, openInFinder, openInTerminal, copyPath } from './actions';
+  import { toolbarFeatures, featureContext, executeFeature } from './registry';
+  import type { ToolbarEntry, ResolvedFeature } from './registry';
+  import { activeFilePath, tick } from './stores';
   import { timeAgo, timeUntil } from './utils';
 
-  $: currentItem = $sectionItems.find(i => i.path === $activeFilePath);
+  $: currentItem = $featureContext.currentItem;
+
+  function isFeature(entry: ToolbarEntry): entry is ResolvedFeature {
+    return !('separator' in entry);
+  }
 </script>
 
 {#if $activeFilePath}
   <div class="toolbar">
     <div class="toolbar-left">
-      <button class="tool-btn" class:active={currentItem?.pinned} on:click={togglePin} title={currentItem?.pinned ? 'Unpin' : 'Pin'}>
-        📌
-        <span class="btn-label">{currentItem?.pinned ? 'Unpin' : 'Pin'}</span>
-        <kbd>P</kbd>
-      </button>
-      <button class="tool-btn" on:click={() => renameTrigger.update(n => n + 1)} title="Rename File">
-        ✏️ <span class="btn-label">Rename</span>
-        <kbd>R</kbd>
-      </button>
-      <button class="tool-btn" on:click={() => reminderPickerOpen.set(true)} title="Set Reminder">
-        ⏰ <span class="btn-label">Remind</span>
-        <kbd>H</kbd>
-      </button>
-      <span class="separator"></span>
-      <button class="tool-btn" on:click={openInFinder} title="Reveal in Finder">
-        📁 <span class="btn-label">Finder</span>
-        <kbd>F</kbd>
-      </button>
-      <button class="tool-btn" on:click={openInTerminal} title="Open in Ghostty">
-        ▶ <span class="btn-label">Terminal</span>
-        <kbd>T</kbd>
-      </button>
-      <button class="tool-btn" on:click={copyPath} title="Copy File Path">
-        📋 <span class="btn-label">Copy Path</span>
-        <kbd>C</kbd>
-      </button>
-      <span class="separator"></span>
-      <button class="tool-btn" class:active={$showToc} on:click={() => showToc.update(v => !v)} title="Table of Contents">
-        ☰ <span class="btn-label">TOC</span>
-        <kbd>O</kbd>
-      </button>
+      {#each $toolbarFeatures as entry}
+        {#if isFeature(entry)}
+          <button class="tool-btn" class:active={entry.isActive} on:click={() => executeFeature(entry, $featureContext)}>
+            {entry.icon}
+            <span class="btn-label">{entry.resolvedLabel}</span>
+            {#if entry.shortcutHint}
+              <kbd>{entry.shortcutHint}</kbd>
+            {/if}
+          </button>
+        {:else}
+          <span class="separator"></span>
+        {/if}
+      {/each}
     </div>
     <div class="toolbar-right">
       {#if currentItem?.reminder_time}

@@ -232,6 +232,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn delete_file(&self, path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+        Ok(())
+    }
+
     pub fn mark_as_read(&self, path: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(

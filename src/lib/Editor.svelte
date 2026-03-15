@@ -107,8 +107,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    max-width: 720px;
-    margin: 0 auto;
     padding: 0 24px;
   }
   .editor-header {

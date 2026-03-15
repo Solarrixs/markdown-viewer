@@ -1,14 +1,7 @@
 <script lang="ts">
   import { currentSection } from './stores';
-  import type { Section } from './stores';
   import { switchSection } from './actions';
-
-  const sections: { id: Section; label: string }[] = [
-    { id: 'inbox', label: 'Inbox' },
-    { id: 'pinned', label: 'Pinned' },
-    { id: 'reminders', label: 'Reminders' },
-    { id: 'archive', label: 'Archive' },
-  ];
+  import { sections } from './registry';
 </script>
 
 <div class="section-tabs">

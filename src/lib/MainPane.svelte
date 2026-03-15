@@ -129,8 +129,6 @@
   }
   .split-close:hover { color: var(--text-primary); }
   .split-body {
-    max-width: 720px;
-    margin: 0 auto;
     padding: 32px 24px;
     color: var(--text-primary);
     font-size: 15px;
@@ -140,8 +138,6 @@
     height: 100%;
     overflow-y: auto;
     position: relative;
-    max-width: 720px;
-    margin: 0 auto;
     padding: 0 24px;
   }
   .welcome {

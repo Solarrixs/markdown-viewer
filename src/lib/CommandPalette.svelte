@@ -1,8 +1,9 @@
 <script lang="ts">
   import { fade, scale } from 'svelte/transition';
   import { get } from 'svelte/store';
-  import { commandPaletteOpen, activeFilePath, settingsOpen, reminderPickerOpen, editMode, showToc, sectionItems, selectedIndex, bulkOpenModalOpen, renameTrigger } from './stores';
-  import { switchSection, toggleAlwaysOnTop, archiveFile, togglePin, openFile, openFileDialog, openFilePath, openInFinder, openInTerminal, copyPath, reopenLastClosedTab, openInSplit, closeSplit, saveIfDirty } from './actions';
+  import { commandPaletteOpen } from './stores';
+  import { openFile, openFilePath } from './actions';
+  import { paletteFeatures, featureContext, executeFeature } from './registry';
   import { invoke } from '@tauri-apps/api/core';
 
   let query = '';
@@ -22,29 +23,6 @@
     items: PaletteItem[];
   }
 
-  const actions: PaletteItem[] = [
-    { label: 'Open File...', hint: 'Cmd+O', type: 'action', action: () => { close(); openFileDialog(); } },
-    { label: 'Open Multiple Files...', hint: '', type: 'action', action: () => { close(); bulkOpenModalOpen.set(true); } },
-    { label: 'Rename file', hint: 'R', type: 'action', action: () => { close(); renameTrigger.update(n => n + 1); } },
-    { label: 'Archive file', hint: 'E', type: 'action', action: () => { archiveFile(); close(); } },
-    { label: 'Pin / Unpin file', hint: 'P', type: 'action', action: () => { togglePin(); close(); } },
-    { label: 'Set reminder', hint: 'H', type: 'action', action: () => { close(); reminderPickerOpen.set(true); } },
-    { label: 'Toggle edit mode', hint: 'Cmd+E', type: 'action', action: () => { saveIfDirty().then(() => { editMode.update(v => !v); close(); }); } },
-    { label: 'Reveal in Finder', hint: 'F', type: 'action', action: () => { openInFinder(); close(); } },
-    { label: 'Open in Terminal', hint: 'T', type: 'action', action: () => { openInTerminal(); close(); } },
-    { label: 'Copy file path', hint: 'C', type: 'action', action: () => { copyPath(); close(); } },
-    { label: 'Toggle always on top', hint: '', type: 'action', action: () => { toggleAlwaysOnTop(); close(); } },
-    { label: 'Toggle table of contents', hint: 'O', type: 'action', action: () => { showToc.update(v => !v); close(); } },
-    { label: 'Go to Inbox', hint: 'G I', type: 'action', action: () => { switchSection('inbox'); close(); } },
-    { label: 'Go to Pinned', hint: 'G P', type: 'action', action: () => { switchSection('pinned'); close(); } },
-    { label: 'Go to Reminders', hint: 'G R', type: 'action', action: () => { switchSection('reminders'); close(); } },
-    { label: 'Go to Archive', hint: 'G A', type: 'action', action: () => { switchSection('archive'); close(); } },
-    { label: 'Open Settings', hint: 'Cmd+,', type: 'action', action: () => { settingsOpen.set(true); close(); } },
-    { label: 'Reopen last closed tab', hint: 'Cmd+Shift+T', type: 'action', action: () => { close(); reopenLastClosedTab(); } },
-    { label: 'Split view: open right', hint: 'Cmd+Enter', type: 'action', action: () => { const items = get(sectionItems); const idx = get(selectedIndex); if (items[idx]) { openInSplit(items[idx]); } close(); } },
-    { label: 'Split view: close', hint: '', type: 'action', action: () => { closeSplit(); close(); } },
-  ];
-
   let fileResults: PaletteItem[] = [];
   let contentResults: PaletteItem[] = [];
 
@@ -57,8 +35,8 @@
   }
 
   $: filteredActions = query
-    ? actions.filter(a => a.label.toLowerCase().includes(query.toLowerCase()))
-    : actions;
+    ? $paletteFeatures.filter(a => a.resolvedLabel.toLowerCase().includes(query.toLowerCase()))
+    : $paletteFeatures;
 
   $: {
     clearTimeout(searchDebounceTimer);
@@ -83,7 +61,13 @@
         action: () => { close(); openFilePath(query); },
       }] });
     } else if (filteredActions.length > 0) {
-      result.push({ label: 'Actions', items: filteredActions });
+      const actionItems: PaletteItem[] = filteredActions.map(f => ({
+        label: f.resolvedLabel,
+        hint: f.shortcutHint ?? '',
+        type: 'action' as const,
+        action: () => { executeFeature(f, get(featureContext)); close(); },
+      }));
+      result.push({ label: 'Actions', items: actionItems });
     }
     if (fileResults.length > 0) {
       result.push({ label: 'Files', items: fileResults });
