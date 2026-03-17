@@ -10,8 +10,8 @@
   import ShortcutHelp from './lib/ShortcutHelp.svelte';
   import BulkOpenModal from './lib/BulkOpenModal.svelte';
   import Toast from './lib/Toast.svelte';
-  import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog } from './lib/actions';
-  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight } from './lib/stores';
+  import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog, loadRecentCommits } from './lib/actions';
+  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight, activeFilePath, openTabs, sidebarViewMode } from './lib/stores';
   import { get } from 'svelte/store';
 
   let unlisteners: Array<() => void> = [];
@@ -30,6 +30,28 @@
 
     const unlisten1 = await listen('file-changed', debouncedRefresh);
     const unlisten2 = await listen('reminder-fired', () => refreshItems());
+    const unlisten4 = await listen('new-commits', () => {
+      // Auto-refresh timeline if it's visible
+      if (get(sidebarViewMode) === 'timeline') {
+        loadRecentCommits();
+      }
+    });
+    const unlisten3 = await listen<string>('file-removed', (event) => {
+      const removedPath = event.payload;
+      // Close tab if the removed file is open
+      openTabs.update(tabs => {
+        const idx = tabs.findIndex(t => t.path === removedPath);
+        if (idx !== -1) {
+          const newTabs = [...tabs];
+          newTabs.splice(idx, 1);
+          return newTabs;
+        }
+        return tabs;
+      });
+      // Clear active file if it was removed
+      activeFilePath.update(p => p === removedPath ? null : p);
+      refreshItems();
+    });
 
     // Menu bar event handlers
     const menuListeners = await Promise.all([
@@ -47,7 +69,7 @@
       listen('open_file', () => openFileDialog()),
     ]);
 
-    unlisteners = [unlisten1, unlisten2, ...menuListeners];
+    unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, ...menuListeners];
   });
 
   onDestroy(() => {

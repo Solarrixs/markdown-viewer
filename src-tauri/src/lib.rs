@@ -1,7 +1,10 @@
 mod commands;
+mod commits;
 mod db;
 mod git;
 mod reminders;
+mod sessions;
+mod summarize;
 pub mod watcher;
 
 use std::sync::Arc;
@@ -209,6 +212,23 @@ pub fn run() {
             commands::open_in_terminal,
             commands::restore_file,
             commands::search_file_contents,
+            commands::get_setting,
+            commands::set_setting,
+            commands::get_recent_commits,
+            commands::get_commit_files,
+            commands::save_annotation,
+            commands::delete_annotation,
+            commands::get_annotations,
+            commands::get_unsent_annotations,
+            commands::mark_annotations_sent,
+            commands::set_review_status,
+            commands::get_review_statuses,
+            commands::get_review_progress,
+            commands::get_diff_summary,
+            commands::get_commit_file_diff,
+            summarize::trigger_summarize,
+            sessions::list_claude_sessions,
+            sessions::send_feedback_to_session,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -217,6 +237,7 @@ pub fn run() {
             let watcher_handle = watcher::start_watcher(handle.clone(), db_for_builder.clone());
             app.manage(watcher_handle);
             reminders::start_reminder_loop(handle.clone(), db_for_builder.clone());
+            commits::start_commit_poller(handle.clone(), db_for_builder.clone());
 
             // Build menu bar
             let app_menu = build_menu(app)?;

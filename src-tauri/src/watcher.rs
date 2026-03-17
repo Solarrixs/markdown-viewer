@@ -92,6 +92,16 @@ pub fn start_watcher(app_handle: AppHandle, db: Arc<Database>) -> WatcherHandle 
                                         }
                                     }
                                 }
+                                EventKind::Remove(_) => {
+                                    for path in &event.paths {
+                                        if let Some(path_str) = path.to_str() {
+                                            if should_process(path_str, &ignore) {
+                                                let _ = db_clone.delete_file(path_str);
+                                                let _ = app_clone.emit("file-removed", path_str);
+                                            }
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                         }

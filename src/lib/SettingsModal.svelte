@@ -8,6 +8,8 @@
   let folders: WatchedFolder[] = [];
   let patterns: IgnorePattern[] = [];
   let newPattern = '';
+  let apiKey = '';
+  let apiKeyMasked = true;
 
   $: if ($settingsOpen) {
     loadSettings();
@@ -17,9 +19,16 @@
     try {
       folders = await invoke<WatchedFolder[]>('get_watched_folders');
       patterns = await invoke<IgnorePattern[]>('get_ignore_patterns');
+      const saved = await invoke<string | null>('get_setting', { key: 'anthropic_api_key' });
+      apiKey = saved ?? '';
     } catch (e) {
       console.error('Failed to load settings:', e);
     }
+  }
+
+  async function saveApiKey() {
+    if (!apiKey.trim()) return;
+    await mutate('set_setting', { key: 'anthropic_api_key', value: apiKey.trim() });
   }
 
   async function mutate(command: string, args: Record<string, unknown>) {
@@ -84,6 +93,26 @@
           {/each}
         </div>
         <button class="add-btn" on:click={addFolder}>+ Add Folder</button>
+      </div>
+
+      <div class="section">
+        <h3>API Keys</h3>
+        <div class="api-key-row">
+          <label class="api-label">Anthropic</label>
+          <div class="api-input-wrap">
+            <input
+              type={apiKeyMasked ? 'password' : 'text'}
+              bind:value={apiKey}
+              placeholder="sk-ant-..."
+              class="pattern-input api-input"
+              on:blur={saveApiKey}
+            />
+            <button class="toggle-vis" on:click={() => apiKeyMasked = !apiKeyMasked}>
+              {apiKeyMasked ? '👁' : '🙈'}
+            </button>
+          </div>
+        </div>
+        <p class="hint">Used for AI diff summarization. Saved locally.</p>
       </div>
 
       <div class="section">
@@ -233,4 +262,34 @@
   }
   .pattern-input:focus { border-color: var(--accent); }
   .pattern-input::placeholder { color: var(--text-disabled); }
+  .api-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .api-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 70px;
+  }
+  .api-input-wrap {
+    flex: 1;
+    display: flex;
+    gap: 4px;
+  }
+  .api-input { flex: 1; }
+  .toggle-vis {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .hint {
+    font-size: 11px;
+    color: var(--text-disabled);
+    margin-top: 4px;
+  }
 </style>

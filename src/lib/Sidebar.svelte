@@ -1,13 +1,18 @@
 <script lang="ts">
   import SectionTabs from './SectionTabs.svelte';
   import FileList from './FileList.svelte';
-  import { sidebarVisible } from './stores';
+  import CommitTimeline from './CommitTimeline.svelte';
+  import { sidebarVisible, sidebarViewMode } from './stores';
 </script>
 
 {#if $sidebarVisible}
   <aside class="sidebar">
     <SectionTabs />
-    <FileList />
+    {#if $sidebarViewMode === 'files'}
+      <FileList />
+    {:else}
+      <CommitTimeline />
+    {/if}
   </aside>
 {/if}
 

@@ -131,6 +131,77 @@ export const shortcutHelpOpen = writable<boolean>(false);
 
 export const findBarOpen = writable<boolean>(false);
 
+// Timeline / commit view
+export type SidebarViewMode = 'files' | 'timeline';
+export const sidebarViewMode = writable<SidebarViewMode>('files');
+
+export interface CommitRecord {
+  id: number;
+  repo_path: string;
+  oid: string;
+  message: string;
+  author: string | null;
+  timestamp: string;
+  files_changed: number;
+  additions: number;
+  deletions: number;
+  session_id: string | null;
+  created_at: string;
+}
+
+export interface CommitFileRecord {
+  id: number;
+  commit_oid: string;
+  file_path: string;
+  additions: number;
+  deletions: number;
+  status: string;
+}
+
+export interface DiffSummaryRecord {
+  id: number;
+  commit_oid: string;
+  summary: string;
+  model: string | null;
+  created_at: string;
+}
+
+export interface AnnotationRecord {
+  id: number;
+  file_path: string;
+  line_number: number;
+  commit_hash: string | null;
+  annotation_text: string;
+  sent: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewStatusRecord {
+  id: number;
+  commit_hash: string;
+  status: string;
+  reviewed_at: string | null;
+  notes: string | null;
+}
+
+export interface SessionInfo {
+  session_id: string;
+  timestamp: string;
+  status: 'active' | 'idle' | 'completed';
+}
+
+export const recentCommits = writable<CommitRecord[]>([]);
+export const selectedCommitOid = writable<string | null>(null);
+export const commitFiles = writable<CommitFileRecord[]>([]);
+export const annotations = writable<AnnotationRecord[]>([]);
+export const activeAnnotationLine = writable<number | null>(null);
+export const reviewStatuses = writable<ReviewStatusRecord[]>([]);
+export const reviewProgress = writable<{ reviewed: number; total: number }>({ reviewed: 0, total: 0 });
+export const claudeSessions = writable<SessionInfo[]>([]);
+
+export const feedbackPanelOpen = writable<boolean>(false);
+
 export const splitPath = writable<string | null>(null);
 export const splitContent = writable<string>('');
 export const splitDiff = writable<DiffResult | null>(null);

@@ -4,14 +4,14 @@ import {
   activeFilePath, sectionItems, currentSection, editMode, commandPaletteOpen,
   reminderPickerOpen, settingsOpen, shortcutHelpOpen, showDiff, showToc,
   sidebarVisible, renameTrigger, bulkOpenModalOpen, findBarOpen, toasts,
-  selectedIndex,
+  selectedIndex, feedbackPanelOpen,
 } from './stores';
 import type { InboxItem, Section } from './stores';
 import {
   togglePin, openInFinder, openInTerminal, copyPath, deleteFile, archiveFile,
   openFileDialog, saveIfDirty, reopenLastClosedTab, closeActiveTab,
   openInSplit, closeSplit, toggleAlwaysOnTop, dismissToast,
-  switchSection,
+  switchSection, toggleSidebarView,
 } from './actions';
 
 // ---------------------------------------------------------------------------
@@ -335,6 +335,22 @@ export const features: FeatureDef[] = [
     icon: '⊟',
     commandPalette: { category: 'View' },
     action: () => closeSplit(),
+  },
+
+  {
+    id: 'send-feedback',
+    label: 'Send Feedback to Claude',
+    icon: '💬',
+    commandPalette: { category: 'Review' },
+    action: () => feedbackPanelOpen.update(v => !v),
+  },
+  {
+    id: 'toggle-timeline',
+    label: 'Toggle Timeline View',
+    icon: '⏱',
+    commandPalette: { category: 'View' },
+    shortcut: { key: 'v', chord: 'g', scope: 'navigation' },
+    action: () => toggleSidebarView(),
   },
 
   // --- Shortcut-only (no toolbar, no palette) ---

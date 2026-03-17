@@ -1,4 +1,4 @@
-use crate::db::Database;
+use crate::db::{self, Database};
 use crate::git;
 use crate::watcher::WatcherHandle;
 use serde::Serialize;
@@ -368,6 +368,100 @@ pub(crate) fn search_contents_in_paths(
     }
 
     results
+}
+
+// ── Settings commands ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_setting(db: State<'_, Arc<Database>>, key: &str) -> Result<Option<String>, String> {
+    db.get_setting(key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_setting(db: State<'_, Arc<Database>>, key: &str, value: &str) -> Result<(), String> {
+    db.set_setting(key, value).map_err(|e| e.to_string())
+}
+
+// ── Commit commands ───────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_recent_commits(db: State<'_, Arc<Database>>, repo_path: Option<&str>, limit: Option<i64>) -> Result<Vec<db::CommitRecord>, String> {
+    let limit = limit.unwrap_or(50);
+    match repo_path {
+        Some(rp) => db.get_recent_commits(rp, limit).map_err(|e| e.to_string()),
+        None => db.get_all_recent_commits(limit).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_files(db: State<'_, Arc<Database>>, commit_oid: &str) -> Result<Vec<db::CommitFileRecord>, String> {
+    db.get_commit_files(commit_oid).map_err(|e| e.to_string())
+}
+
+// ── Annotation commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn save_annotation(db: State<'_, Arc<Database>>, file_path: &str, line_number: i32, commit_hash: Option<&str>, annotation_text: &str) -> Result<i64, String> {
+    db.save_annotation(file_path, line_number, commit_hash, annotation_text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_annotation(db: State<'_, Arc<Database>>, id: i64) -> Result<(), String> {
+    db.delete_annotation(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_annotations(db: State<'_, Arc<Database>>, file_path: &str) -> Result<Vec<db::Annotation>, String> {
+    db.get_annotations(file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_unsent_annotations(db: State<'_, Arc<Database>>) -> Result<Vec<db::Annotation>, String> {
+    db.get_unsent_annotations().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn mark_annotations_sent(db: State<'_, Arc<Database>>, ids: Vec<i64>) -> Result<(), String> {
+    db.mark_annotations_sent(&ids).map_err(|e| e.to_string())
+}
+
+// ── Review status commands ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn set_review_status(db: State<'_, Arc<Database>>, commit_hash: &str, status: &str, notes: Option<&str>) -> Result<(), String> {
+    db.set_review_status(commit_hash, status, notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_review_statuses(db: State<'_, Arc<Database>>) -> Result<Vec<db::ReviewStatus>, String> {
+    db.get_review_statuses().map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewProgress {
+    pub reviewed: i64,
+    pub total: i64,
+}
+
+#[tauri::command]
+pub fn get_review_progress(db: State<'_, Arc<Database>>) -> Result<ReviewProgress, String> {
+    let (reviewed, total) = db.get_review_progress().map_err(|e| e.to_string())?;
+    Ok(ReviewProgress { reviewed, total })
+}
+
+// ── Commit diff command ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_commit_file_diff(repo_path: &str, commit_oid: &str, file_path: &str) -> Result<git::DiffResult, String> {
+    git::get_commit_file_diff(repo_path, commit_oid, file_path)
+        .ok_or_else(|| "No diff available for this commit/file".to_string())
+}
+
+// ── Diff summary commands ─────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_diff_summary(db: State<'_, Arc<Database>>, commit_oid: &str) -> Result<Option<db::DiffSummary>, String> {
+    db.get_diff_summary(commit_oid).map_err(|e| e.to_string())
 }
 
 /// Build a FileListItem from a FileRecord and optional diff stats.

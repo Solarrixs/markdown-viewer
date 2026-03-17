@@ -6,8 +6,11 @@ import {
   openTabs, activeTabIndex, fileContent, fileDiff, editMode, showDiff,
   alwaysOnTop, savedIndicator, editText, selfSaveInFlight, toasts,
   splitPath, splitContent, splitDiff, activeSplit,
+  sidebarViewMode, recentCommits, selectedCommitOid, commitFiles,
+  annotations, activeAnnotationLine, reviewStatuses, reviewProgress,
+  claudeSessions,
 } from './stores';
-import type { InboxItem, Section, DiffResult } from './stores';
+import type { InboxItem, Section, DiffResult, CommitRecord, CommitFileRecord, AnnotationRecord, ReviewStatusRecord, SessionInfo } from './stores';
 
 function extractFilename(path: string): string {
   return path.split('/').pop() ?? 'file';
@@ -409,4 +412,146 @@ export function closeSplit() {
   splitContent.set('');
   splitDiff.set(null);
   activeSplit.set('left');
+}
+
+// ── Timeline / Commits ──────────────────────────────────────────────────
+
+export function toggleSidebarView() {
+  sidebarViewMode.update(v => v === 'files' ? 'timeline' : 'files');
+}
+
+export async function loadRecentCommits() {
+  try {
+    const commits = await invoke<CommitRecord[]>('get_recent_commits', { repoPath: null, limit: 50 });
+    recentCommits.set(commits ?? []);
+  } catch (e) {
+    console.error('Failed to load commits:', e);
+  }
+}
+
+export async function selectCommit(oid: string) {
+  const current = get(selectedCommitOid);
+  // Toggle: clicking the same commit deselects it
+  if (current === oid) {
+    selectedCommitOid.set(null);
+    commitFiles.set([]);
+    return;
+  }
+  selectedCommitOid.set(oid);
+  try {
+    const files = await invoke<CommitFileRecord[]>('get_commit_files', { commitOid: oid });
+    commitFiles.set(files ?? []);
+  } catch (e) {
+    console.error('Failed to load commit files:', e);
+  }
+}
+
+export async function openCommitFileDiff(repoPath: string, commitOid: string, filePath: string) {
+  try {
+    const diff = await invoke<DiffResult>('get_commit_file_diff', { repoPath, commitOid, filePath });
+    fileDiff.set(diff);
+    showDiff.set(true);
+    editMode.set(false);
+    // Set active file to the repo-relative path so MainPane shows the diff view
+    const absPath = repoPath + filePath;
+    activeFilePath.set(absPath);
+    fileContent.set(diff.content);
+    editText.set(diff.content);
+    // Add a tab
+    const tabs = [...get(openTabs)];
+    const filename = filePath.split('/').pop() ?? filePath;
+    if (!tabs.some(t => t.path === absPath)) {
+      tabs.push({ path: absPath, filename, additions: diff.additions, deletions: diff.deletions });
+      openTabs.set(tabs);
+      activeTabIndex.set(tabs.length - 1);
+    } else {
+      activeTabIndex.set(tabs.findIndex(t => t.path === absPath));
+    }
+  } catch (e) {
+    console.error('Failed to load commit file diff:', e);
+    showToast(`Could not load diff: ${e}`);
+  }
+}
+
+// ── Annotations ─────────────────────────────────────────────────────────
+
+export async function loadAnnotations(filePath: string) {
+  try {
+    const result = await invoke<AnnotationRecord[]>('get_annotations', { filePath });
+    annotations.set(result ?? []);
+  } catch (e) {
+    console.error('Failed to load annotations:', e);
+  }
+}
+
+export async function saveAnnotation(filePath: string, lineNumber: number, annotationText: string, commitHash?: string) {
+  try {
+    const id = await invoke<number>('save_annotation', {
+      filePath, lineNumber, commitHash: commitHash ?? null, annotationText
+    });
+    await loadAnnotations(filePath);
+    return id;
+  } catch (e) {
+    console.error('Failed to save annotation:', e);
+    return null;
+  }
+}
+
+export async function deleteAnnotation(id: number, filePath: string) {
+  try {
+    await invoke('delete_annotation', { id });
+    await loadAnnotations(filePath);
+  } catch (e) {
+    console.error('Failed to delete annotation:', e);
+  }
+}
+
+// ── Review Status ───────────────────────────────────────────────────────
+
+export async function setReviewStatus(commitHash: string, status: string, notes?: string) {
+  try {
+    await invoke('set_review_status', { commitHash, status, notes: notes ?? null });
+    await loadReviewProgress();
+    await loadReviewStatuses();
+  } catch (e) {
+    console.error('Failed to set review status:', e);
+  }
+}
+
+export async function loadReviewStatuses() {
+  try {
+    const result = await invoke<ReviewStatusRecord[]>('get_review_statuses');
+    reviewStatuses.set(result ?? []);
+  } catch (e) {
+    console.error('Failed to load review statuses:', e);
+  }
+}
+
+export async function loadReviewProgress() {
+  try {
+    const result = await invoke<{ reviewed: number; total: number }>('get_review_progress');
+    reviewProgress.set(result ?? { reviewed: 0, total: 0 });
+  } catch (e) {
+    console.error('Failed to load review progress:', e);
+  }
+}
+
+// ── Claude Sessions ─────────────────────────────────────────────────────
+
+export async function loadClaudeSessions() {
+  try {
+    const result = await invoke<SessionInfo[]>('list_claude_sessions', { projectDir: null });
+    claudeSessions.set(result ?? []);
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+  }
+}
+
+export async function sendFeedbackToSession(sessionId: string, feedbackText: string) {
+  try {
+    await invoke('send_feedback_to_session', { sessionId, feedbackText });
+    showToast('Feedback sent to Claude');
+  } catch (e) {
+    showToast(`Failed to send feedback: ${e}`);
+  }
 }

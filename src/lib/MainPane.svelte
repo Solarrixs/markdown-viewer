@@ -6,10 +6,12 @@
   import Editor from './Editor.svelte';
   import TableOfContents from './TableOfContents.svelte';
   import FindBar from './FindBar.svelte';
+  import ReviewBar from './ReviewBar.svelte';
+  import FeedbackPanel from './FeedbackPanel.svelte';
   import MarkdownIt from 'markdown-it';
   // @ts-ignore
   import taskLists from 'markdown-it-task-lists';
-  import { activeFilePath, editMode, showDiff, showToc, findBarOpen, splitPath, splitContent, activeSplit } from './stores';
+  import { activeFilePath, editMode, showDiff, showToc, findBarOpen, splitPath, splitContent, activeSplit, selectedCommitOid, feedbackPanelOpen } from './stores';
   import { closeSplit } from './actions';
 
   const splitMd = MarkdownIt({ html: true, linkify: true, typographer: true }).use(taskLists);
@@ -22,6 +24,9 @@
 <div class="main-pane">
   <TabBar />
   <NoteToolbar />
+  {#if $selectedCommitOid}
+    <ReviewBar />
+  {/if}
   {#if $findBarOpen && $activeFilePath && !$editMode && markdownEl}
     <FindBar containerEl={markdownEl} />
   {/if}
@@ -64,6 +69,9 @@
       </div>
     {/if}
   </div>
+  {#if $feedbackPanelOpen}
+    <FeedbackPanel />
+  {/if}
 </div>
 
 <style>

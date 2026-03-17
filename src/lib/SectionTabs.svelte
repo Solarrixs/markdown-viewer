@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { currentSection } from './stores';
-  import { switchSection } from './actions';
+  import { currentSection, sidebarViewMode } from './stores';
+  import { switchSection, toggleSidebarView } from './actions';
   import { sections } from './registry';
 </script>
 
@@ -14,6 +14,14 @@
       {section.label}
     </button>
   {/each}
+  <button
+    class="tab view-toggle"
+    class:active={$sidebarViewMode === 'timeline'}
+    on:click={toggleSidebarView}
+    title="Toggle timeline view (G V)"
+  >
+    ⏱
+  </button>
 </div>
 
 <style>
@@ -42,5 +50,10 @@
     color: var(--text-heading);
     background: var(--bg-elevated);
     border-bottom: 2px solid var(--accent);
+  }
+  .view-toggle {
+    flex: 0;
+    padding: 6px 10px;
+    font-size: 13px;
   }
 </style>

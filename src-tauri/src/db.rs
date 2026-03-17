@@ -4,6 +4,61 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommitRecord {
+    pub id: i64,
+    pub repo_path: String,
+    pub oid: String,
+    pub message: String,
+    pub author: Option<String>,
+    pub timestamp: String,
+    pub files_changed: i32,
+    pub additions: i32,
+    pub deletions: i32,
+    pub session_id: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommitFileRecord {
+    pub id: i64,
+    pub commit_oid: String,
+    pub file_path: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiffSummary {
+    pub id: i64,
+    pub commit_oid: String,
+    pub summary: String,
+    pub model: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Annotation {
+    pub id: i64,
+    pub file_path: String,
+    pub line_number: i32,
+    pub commit_hash: Option<String>,
+    pub annotation_text: String,
+    pub sent: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReviewStatus {
+    pub id: i64,
+    pub commit_hash: String,
+    pub status: String,
+    pub reviewed_at: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WatchedFolder {
     pub id: i64,
     pub path: String,
@@ -87,6 +142,67 @@ impl Database {
                 last_modified TEXT,
                 last_seen_hash TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS commits (
+                id INTEGER PRIMARY KEY,
+                repo_path TEXT NOT NULL,
+                oid TEXT NOT NULL UNIQUE,
+                message TEXT NOT NULL,
+                author TEXT,
+                timestamp TEXT NOT NULL,
+                files_changed INTEGER DEFAULT 0,
+                additions INTEGER DEFAULT 0,
+                deletions INTEGER DEFAULT 0,
+                session_id TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS commit_files (
+                id INTEGER PRIMARY KEY,
+                commit_oid TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                additions INTEGER DEFAULT 0,
+                deletions INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'modified'
+            );
+            CREATE INDEX IF NOT EXISTS idx_commit_files_oid ON commit_files(commit_oid);
+
+            CREATE TABLE IF NOT EXISTS diff_summaries (
+                id INTEGER PRIMARY KEY,
+                commit_oid TEXT NOT NULL UNIQUE,
+                summary TEXT NOT NULL,
+                model TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS repo_state (
+                repo_path TEXT PRIMARY KEY,
+                last_seen_oid TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS annotations (
+                id INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                line_number INTEGER NOT NULL,
+                commit_hash TEXT,
+                annotation_text TEXT NOT NULL,
+                sent BOOLEAN DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS review_statuses (
+                id INTEGER PRIMARY KEY,
+                commit_hash TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewed_at TEXT,
+                notes TEXT
             );",
         )?;
 
@@ -341,6 +457,306 @@ impl Database {
         rows.collect()
     }
 
+    // -- Settings --
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached("SELECT value FROM settings WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = ?2",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    // -- Commits --
+
+    pub fn insert_commit(&self, repo_path: &str, oid: &str, message: &str, author: Option<&str>, timestamp: &str, files_changed: i32, additions: i32, deletions: i32) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO commits (repo_path, oid, message, author, timestamp, files_changed, additions, deletions)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![repo_path, oid, message, author, timestamp, files_changed, additions, deletions],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_commit_session(&self, oid: &str, session_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE commits SET session_id = ?2 WHERE oid = ?1",
+            params![oid, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_recent_commits(&self, repo_path: &str, limit: i64) -> Result<Vec<CommitRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, repo_path, oid, message, author, timestamp, files_changed, additions, deletions, session_id, created_at
+             FROM commits WHERE repo_path = ?1 ORDER BY timestamp DESC LIMIT ?2"
+        )?;
+        let rows = stmt.query_map(params![repo_path, limit], |row| {
+            Ok(CommitRecord {
+                id: row.get(0)?,
+                repo_path: row.get(1)?,
+                oid: row.get(2)?,
+                message: row.get(3)?,
+                author: row.get(4)?,
+                timestamp: row.get(5)?,
+                files_changed: row.get(6)?,
+                additions: row.get(7)?,
+                deletions: row.get(8)?,
+                session_id: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn get_all_recent_commits(&self, limit: i64) -> Result<Vec<CommitRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, repo_path, oid, message, author, timestamp, files_changed, additions, deletions, session_id, created_at
+             FROM commits ORDER BY timestamp DESC LIMIT ?1"
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(CommitRecord {
+                id: row.get(0)?,
+                repo_path: row.get(1)?,
+                oid: row.get(2)?,
+                message: row.get(3)?,
+                author: row.get(4)?,
+                timestamp: row.get(5)?,
+                files_changed: row.get(6)?,
+                additions: row.get(7)?,
+                deletions: row.get(8)?,
+                session_id: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    // -- Commit Files --
+
+    pub fn insert_commit_file(&self, commit_oid: &str, file_path: &str, additions: i32, deletions: i32, status: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO commit_files (commit_oid, file_path, additions, deletions, status) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![commit_oid, file_path, additions, deletions, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_commit_files(&self, commit_oid: &str) -> Result<Vec<CommitFileRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, commit_oid, file_path, additions, deletions, status FROM commit_files WHERE commit_oid = ?1"
+        )?;
+        let rows = stmt.query_map(params![commit_oid], |row| {
+            Ok(CommitFileRecord {
+                id: row.get(0)?,
+                commit_oid: row.get(1)?,
+                file_path: row.get(2)?,
+                additions: row.get(3)?,
+                deletions: row.get(4)?,
+                status: row.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    // -- Diff Summaries --
+
+    pub fn get_diff_summary(&self, commit_oid: &str) -> Result<Option<DiffSummary>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, commit_oid, summary, model, created_at FROM diff_summaries WHERE commit_oid = ?1"
+        )?;
+        let mut rows = stmt.query(params![commit_oid])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(DiffSummary {
+                id: row.get(0)?,
+                commit_oid: row.get(1)?,
+                summary: row.get(2)?,
+                model: row.get(3)?,
+                created_at: row.get(4)?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub fn insert_diff_summary(&self, commit_oid: &str, summary: &str, model: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO diff_summaries (commit_oid, summary, model) VALUES (?1, ?2, ?3)",
+            params![commit_oid, summary, model],
+        )?;
+        Ok(())
+    }
+
+    // -- Repo State --
+
+    pub fn get_last_seen_oid(&self, repo_path: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached("SELECT last_seen_oid FROM repo_state WHERE repo_path = ?1")?;
+        let mut rows = stmt.query(params![repo_path])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_last_seen_oid(&self, repo_path: &str, oid: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO repo_state (repo_path, last_seen_oid) VALUES (?1, ?2)
+             ON CONFLICT(repo_path) DO UPDATE SET last_seen_oid = ?2",
+            params![repo_path, oid],
+        )?;
+        Ok(())
+    }
+
+    // -- Annotations --
+
+    pub fn save_annotation(&self, file_path: &str, line_number: i32, commit_hash: Option<&str>, annotation_text: &str) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        // Try to update existing annotation at same file+line
+        let updated = conn.execute(
+            "UPDATE annotations SET annotation_text = ?4, updated_at = datetime('now')
+             WHERE file_path = ?1 AND line_number = ?2 AND (commit_hash = ?3 OR (?3 IS NULL AND commit_hash IS NULL))",
+            params![file_path, line_number, commit_hash, annotation_text],
+        )?;
+        if updated > 0 {
+            let id: i64 = conn.query_row(
+                "SELECT id FROM annotations WHERE file_path = ?1 AND line_number = ?2 AND (commit_hash = ?3 OR (?3 IS NULL AND commit_hash IS NULL))",
+                params![file_path, line_number, commit_hash],
+                |row| row.get(0),
+            )?;
+            return Ok(id);
+        }
+        conn.execute(
+            "INSERT INTO annotations (file_path, line_number, commit_hash, annotation_text) VALUES (?1, ?2, ?3, ?4)",
+            params![file_path, line_number, commit_hash, annotation_text],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn delete_annotation(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM annotations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn get_annotations(&self, file_path: &str) -> Result<Vec<Annotation>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, file_path, line_number, commit_hash, annotation_text, sent, created_at, updated_at
+             FROM annotations WHERE file_path = ?1 ORDER BY line_number ASC"
+        )?;
+        let rows = stmt.query_map(params![file_path], Self::row_to_annotation)?;
+        rows.collect()
+    }
+
+    pub fn get_unsent_annotations(&self) -> Result<Vec<Annotation>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, file_path, line_number, commit_hash, annotation_text, sent, created_at, updated_at
+             FROM annotations WHERE sent = 0 ORDER BY file_path, line_number ASC"
+        )?;
+        let rows = stmt.query_map([], Self::row_to_annotation)?;
+        rows.collect()
+    }
+
+    pub fn mark_annotations_sent(&self, ids: &[i64]) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        for id in ids {
+            conn.execute("UPDATE annotations SET sent = 1 WHERE id = ?1", params![id])?;
+        }
+        Ok(())
+    }
+
+    fn row_to_annotation(row: &rusqlite::Row) -> rusqlite::Result<Annotation> {
+        Ok(Annotation {
+            id: row.get(0)?,
+            file_path: row.get(1)?,
+            line_number: row.get(2)?,
+            commit_hash: row.get(3)?,
+            annotation_text: row.get(4)?,
+            sent: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
+    }
+
+    // -- Review Statuses --
+
+    pub fn set_review_status(&self, commit_hash: &str, status: &str, notes: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO review_statuses (commit_hash, status, reviewed_at, notes) VALUES (?1, ?2, datetime('now'), ?3)
+             ON CONFLICT(commit_hash) DO UPDATE SET status = ?2, reviewed_at = datetime('now'), notes = ?3",
+            params![commit_hash, status, notes],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_review_status(&self, commit_hash: &str) -> Result<Option<ReviewStatus>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, commit_hash, status, reviewed_at, notes FROM review_statuses WHERE commit_hash = ?1"
+        )?;
+        let mut rows = stmt.query(params![commit_hash])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(ReviewStatus {
+                id: row.get(0)?,
+                commit_hash: row.get(1)?,
+                status: row.get(2)?,
+                reviewed_at: row.get(3)?,
+                notes: row.get(4)?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_review_statuses(&self) -> Result<Vec<ReviewStatus>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, commit_hash, status, reviewed_at, notes FROM review_statuses ORDER BY reviewed_at DESC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ReviewStatus {
+                id: row.get(0)?,
+                commit_hash: row.get(1)?,
+                status: row.get(2)?,
+                reviewed_at: row.get(3)?,
+                notes: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn get_review_progress(&self) -> Result<(i64, i64)> {
+        let conn = self.conn.lock().unwrap();
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM commits", [], |row| row.get(0))?;
+        let reviewed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM review_statuses WHERE status IN ('reviewed', 'needs_changes')",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok((reviewed, total))
+    }
 }
 
 #[cfg(test)]

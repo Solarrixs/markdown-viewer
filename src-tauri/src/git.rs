@@ -218,6 +218,81 @@ pub fn get_file_diff(file_path: &str) -> Option<DiffResult> {
     })
 }
 
+/// Get the diff for a specific file in a specific commit (vs its parent).
+/// `repo_path` is the repo workdir, `commit_oid` is the commit hash,
+/// `file_path` is the relative path within the repo.
+pub fn get_commit_file_diff(repo_path: &str, commit_oid: &str, file_path: &str) -> Option<DiffResult> {
+    let repo = Repository::open(repo_path).ok()?;
+    let oid = git2::Oid::from_str(commit_oid).ok()?;
+    let commit = repo.find_commit(oid).ok()?;
+    let tree = commit.tree().ok()?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let mut diff_opts = DiffOptions::new();
+    diff_opts.pathspec(file_path);
+
+    let diff = repo.diff_tree_to_tree(
+        parent_tree.as_ref(),
+        Some(&tree),
+        Some(&mut diff_opts),
+    ).ok()?;
+
+    let mut hunks = Vec::new();
+    let mut additions: i32 = 0;
+    let mut deletions: i32 = 0;
+
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        let line_content = String::from_utf8_lossy(line.content()).to_string();
+
+        match origin {
+            '+' => {
+                additions += 1;
+                hunks.push(DiffHunk {
+                    old_start: line.old_lineno().unwrap_or(0),
+                    new_start: line.new_lineno().unwrap_or(0),
+                    new_lines: 1,
+                    content: line_content,
+                    change_type: "added".to_string(),
+                });
+            }
+            '-' => {
+                deletions += 1;
+                hunks.push(DiffHunk {
+                    old_start: line.old_lineno().unwrap_or(0),
+                    new_start: line.new_lineno().unwrap_or(0),
+                    new_lines: 1,
+                    content: line_content,
+                    change_type: "removed".to_string(),
+                });
+            }
+            ' ' => {
+                hunks.push(DiffHunk {
+                    old_start: line.old_lineno().unwrap_or(0),
+                    new_start: line.new_lineno().unwrap_or(0),
+                    new_lines: 1,
+                    content: line_content,
+                    change_type: "context".to_string(),
+                });
+            }
+            _ => {}
+        }
+        true
+    }).ok()?;
+
+    // Read the file content at this commit
+    let entry = tree.get_path(std::path::Path::new(file_path)).ok()?;
+    let blob = repo.find_blob(entry.id()).ok()?;
+    let content = String::from_utf8_lossy(blob.content()).to_string();
+
+    Some(DiffResult {
+        content,
+        hunks,
+        additions,
+        deletions,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
