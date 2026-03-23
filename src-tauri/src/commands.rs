@@ -28,12 +28,8 @@ pub fn get_inbox_items(
     db: State<'_, Arc<Database>>,
     filter: &str,
 ) -> Result<Vec<FileListItem>, String> {
-    let records: Vec<_> = db.get_files_by_status(filter)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        // TODO: Replace per-record Path::exists() with soft-delete via watcher events (WARN-8)
-        .filter(|r| std::path::Path::new(&r.path).exists())
-        .collect();
+    let records = db.get_files_by_status(filter)
+        .map_err(|e| e.to_string())?;
 
     // Batch diff: one repo open + one diff for existing files only
     let paths: Vec<String> = records.iter().map(|r| r.path.clone()).collect();

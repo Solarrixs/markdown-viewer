@@ -239,6 +239,16 @@ pub fn run() {
             reminders::start_reminder_loop(handle.clone(), db_for_builder.clone());
             commits::start_commit_poller(handle.clone(), db_for_builder.clone());
 
+            // Prune DB entries for files deleted while the app was closed (background)
+            let db_prune = db_for_builder.clone();
+            std::thread::spawn(move || {
+                match db_prune.prune_missing_files() {
+                    Ok(pruned) if pruned > 0 => eprintln!("Pruned {} missing files from database", pruned),
+                    Err(e) => eprintln!("Failed to prune missing files: {}", e),
+                    _ => {}
+                }
+            });
+
             // Build menu bar
             let app_menu = build_menu(app)?;
             app.set_menu(app_menu)?;

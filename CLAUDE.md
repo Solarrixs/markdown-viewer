@@ -12,15 +12,22 @@
 - `App.svelte` — Root component, sets up event listeners for file-changed/reminder-fired
 - `src/lib/stores.ts` — All app state as Svelte writable stores (no component-local state for shared data)
 - `src/lib/actions.ts` — All business logic functions (openFile, switchSection, archiveFile, togglePin, saveIfDirty, etc.)
-- Components: FileList, FileItem, MainPane, TabBar, NoteToolbar, Editor, RenderedMarkdown, DiffView, CommandPalette, ReminderPicker, SettingsModal, SectionTabs, KeyboardHandler
+- `src/lib/registry.ts` — Feature registry
+- `src/lib/feedbackWriter.ts` — AI feedback/annotation writer
+- `src/lib/utils.ts` — Shared utility functions
+- Components: FileList, FileItem, MainPane, TabBar, NoteToolbar, Editor, RenderedMarkdown, DiffView, CommandPalette, ReminderPicker, SettingsModal, SectionTabs, KeyboardHandler, Sidebar, FindBar, ShortcutHelp, TableOfContents, Toast, BulkOpenModal, CommitTimeline, DiffSummaryCard, AnnotationPopover, FeedbackPanel, ReviewBar
 
 ### Backend (`src-tauri/src/`)
+- `main.rs` — Entry point
 - `lib.rs` — Tauri app setup, plugin registration, command handler registration
 - `commands.rs` — All `#[tauri::command]` functions (IPC boundary)
 - `db.rs` — SQLite database layer (files, watched_folders, ignore_patterns tables)
 - `watcher.rs` — File system watcher with restartable `WatcherHandle` (restart signal via tokio::sync::Notify)
 - `git.rs` — Git diff integration
 - `reminders.rs` — Background reminder loop
+- `commits.rs` — Commit timeline/history tracking
+- `sessions.rs` — Session management
+- `summarize.rs` — AI summary generation
 
 ### Key patterns
 - Tauri commands use `State<'_, Arc<Database>>` for DB access

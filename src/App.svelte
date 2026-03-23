@@ -11,7 +11,7 @@
   import BulkOpenModal from './lib/BulkOpenModal.svelte';
   import Toast from './lib/Toast.svelte';
   import { refreshItems, saveIfDirty, closeActiveTab, openFileDialog, loadRecentCommits } from './lib/actions';
-  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight, activeFilePath, openTabs, sidebarViewMode } from './lib/stores';
+  import { settingsOpen, commandPaletteOpen, editMode, showDiff, sidebarVisible, selfSaveInFlight, activeFilePath, openTabs, sidebarViewMode, alwaysOnTop } from './lib/stores';
   import { get } from 'svelte/store';
 
   let unlisteners: Array<() => void> = [];
@@ -67,6 +67,7 @@
       listen('toggle_sidebar', () => sidebarVisible.update(v => !v)),
       listen('command_palette', () => commandPaletteOpen.set(true)),
       listen('open_file', () => openFileDialog()),
+      listen<boolean>('always-on-top-changed', (event) => alwaysOnTop.set(event.payload)),
     ]);
 
     unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, ...menuListeners];

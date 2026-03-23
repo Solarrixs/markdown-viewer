@@ -14,7 +14,7 @@
   import { activeFilePath, editMode, showDiff, showToc, findBarOpen, splitPath, splitContent, activeSplit, selectedCommitOid, feedbackPanelOpen } from './stores';
   import { closeSplit } from './actions';
 
-  const splitMd = MarkdownIt({ html: true, linkify: true, typographer: true }).use(taskLists);
+  const splitMd = MarkdownIt({ html: false, linkify: true, typographer: true }).use(taskLists);
   $: splitRendered = $splitContent ? splitMd.render($splitContent) : '';
 
   let markdownEl: HTMLDivElement;

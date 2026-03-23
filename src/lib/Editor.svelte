@@ -39,13 +39,18 @@
   }
 
   let focusPath: string | null = null;
+  let focusContent: string = '';
 
   function handleFocus() {
     focusPath = $activeFilePath;
+    focusContent = $fileContent;
   }
 
   function handleBlur() {
     if ($activeFilePath !== focusPath) return;
+    // External reload changed fileContent but user hasn't typed anything —
+    // saving would overwrite the fresh disk content with stale editor text.
+    if ($fileContent !== focusContent && $editText === focusContent) return;
     if ($editText !== $fileContent) {
       save();
     }

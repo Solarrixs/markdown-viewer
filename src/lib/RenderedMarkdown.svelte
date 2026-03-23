@@ -9,7 +9,7 @@
   import hljs from 'highlight.js';
 
   const md = MarkdownIt({
-    html: true,
+    html: false,
     linkify: true,
     typographer: true,
     highlight: function (str: string, lang: string) {
@@ -21,13 +21,6 @@
       return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
     }
   }).use(taskLists, { enabled: true });
-
-  // Strip HTML comments and dangerous tags (script, iframe, etc.) from rendered output
-  function sanitizeHtml(html: string): string {
-    return html
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<\s*\/?\s*(script|iframe|object|embed|form|link|meta|style)[^>]*>/gi, '');
-  }
 
   // Parse YAML frontmatter (--- delimited block at start of file)
   function parseFrontmatter(content: string): { meta: Record<string, string> | null; body: string } {
@@ -47,7 +40,7 @@
   }
 
   $: ({ meta: frontmatter, body: markdownBody } = parseFrontmatter($fileContent));
-  $: rendered = sanitizeHtml(md.render(markdownBody));
+  $: rendered = md.render(markdownBody);
 
   export let containerEl: HTMLDivElement = undefined!;
 

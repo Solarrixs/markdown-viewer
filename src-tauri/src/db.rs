@@ -354,6 +354,36 @@ impl Database {
         Ok(())
     }
 
+    /// Remove DB entries for files that no longer exist on disk.
+    /// Called once at startup to catch deletions that happened while the app was closed.
+    pub fn prune_missing_files(&self) -> Result<usize> {
+        // Collect paths under lock, then release before doing filesystem I/O
+        let paths: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT path FROM files")?;
+            let rows: Vec<String> = stmt.query_map([], |row| row.get(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        let missing: Vec<&String> = paths.iter()
+            .filter(|p| !std::path::Path::new(p.as_str()).exists())
+            .collect();
+
+        if missing.is_empty() {
+            return Ok(0);
+        }
+
+        // Batch delete in a single transaction
+        let conn = self.conn.lock().unwrap();
+        conn.execute("BEGIN", [])?;
+        for path in &missing {
+            conn.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+        }
+        conn.execute("COMMIT", [])?;
+        Ok(missing.len())
+    }
+
     pub fn mark_as_read(&self, path: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
